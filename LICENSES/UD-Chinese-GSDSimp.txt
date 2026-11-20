@@ -1,0 +1,14 @@
+The learned LNLM v2 target-embedding residuals (scripts/lnlm/target-deltas.tsv,
+also included in lokey_lexicon.bin) were adapted in 2026 by the Lokey project
+using Universal Dependencies Chinese GSDSimp v2.16, derived from UD Chinese GSD.
+The residuals are provided under Creative Commons Attribution-ShareAlike 4.0
+International. Changes include extracting simplified Chinese word contexts,
+mining competitors and fitting and quantizing pairwise target-embedding updates.
+No treebank text is distributed with the keyboard.
+
+Treebank, credits and original data notices:
+https://github.com/UniversalDependencies/UD_Chinese-GSDSimp/tree/9b1fc1d388b8f4ac7cf12a704995618571454b80
+https://universaldependencies.org/treebanks/zh_gsdsimp/index.html
+Treebank maintainers include Peng Qi and Koichi Yasuoka. Original annotations
+come from the Chinese Google Universal Dependency Treebank and its contributors.
+License: https://creativecommons.org/licenses/by-sa/4.0/
