@@ -13,8 +13,8 @@
 ### 1. 词库包概览
 
 - **二进制格式**：`LKLF-v2` + 内嵌 `LNLM-v2`（32 维 SIMD 神经整句打分器）+ `EOF-16` 尾部校验结构（仅含词库与神经语言模型，不含表情符号或 OpenCC 二进制）。
-- **基准对齐**：基于 `gaboolic/rime-frost` 固定提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）编译，与 Lokey `v0.7.15` 基线保持**逐字节一致**（`40,083,208` 字节，425 个音节、553,351 条中文词条、80,443 条简拼索引、21,313 条英文及中英混输词条、392,760 条联想与排序边、32,768 个神经词向量、7,863 个神经字向量）。
-- **零延迟挂载**：导入后由 Lokey 通过 `NSData(contentsOf:options: [.mappedIfSafe])` 以只读 `mmap` 零拷贝方式直接热挂载，耗时 `0.00ms`，无堆内存拷贝开销。
+- **`v0.9.4` 神经骨干对齐**：基于 `gaboolic/rime-frost` 固定提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）编译，内嵌与 `Lokey v0.9.4` 双向神经打分器（`LNLM-v2` + 内置 `LNBR v1` 逆向句首重排器 `lokey_lnlm_bwd.bin`）完全对齐的端到端 QAT `LNLM-v2` 骨干权重（`LNB2`：`7,832` 映射字向量、`4,163` 词向量覆盖、`25,344` 字节 MLP）与对话双字搭配表（`conversational-bigrams.tsv`），共 `40,091,104` 字节（`38.23 MB`）：`425` 个音节、`553,351` 条中文词条、`80,443` 条简拼索引、`21,313` 条英文及中英混输词条、`393,384` 条联想与排序边（含 `4,799` 条合入对话双字搭配及 `18` 对重训提交层参数）、`32,768` 个神经词向量、`7,863` 个神经字向量。
+- **零延迟挂载**：导入后由 Lokey 通过 `NSData(contentsOf:options: [.mappedIfSafe])` 以只读 `mmap` 零拷贝方式直接热挂载，并与主应用内置的 `lokey_lnlm_bwd.bin`（`LNBR v1`）双向重排器及用户自研 17.9k+ 表情/OpenCC 资源协同工作，无堆内存拷贝开销。
 
 ### 2. 物理零联网与 GPL-3.0 商业隔离说明
 
@@ -63,7 +63,7 @@ python3 scripts/build_lokeypack.py
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> 说明：默认固定拉取 `gaboolic/rime-frost` 提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`），可 100% 复现 `v0.7.15` 字节级基线（SHA-256 `62ce08fa0c4a94d0e45d7d715016128b944685dd9cc3e4f8f2af18fecd221db9`）。如希望测试上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义目录。
+> 说明：默认固定拉取 `gaboolic/rime-frost` 提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`），使用 `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` 可 100% 确定性复现 `v0.9.4` 发布版（`40,091,104` 字节，SHA-256 `d705ffb2965daa1543dd99e89e668ed77edc90d8d3c1cd7a409bf5d491cb7133`；GitHub Release：`https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.4`）。如希望测试上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义目录。
 
 ### 6. 开源许可与致谢
 
@@ -81,8 +81,8 @@ python3 scripts/build_lokeypack.py
 ### 1. Pack Overview
 
 - **Binary Format**: `LKLF-v2` + embedded `LNLM-v2` (32-dim SIMD neural sentence scorer) + `EOF-16` trailer (`rime-frost.lokeypack` only; does not bundle `lokey_emoji.bin` or `lokey_opencc.bin`).
-- **Baseline Parity**: Compiled from pinned `gaboolic/rime-frost` commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`), matching the `v0.7.15` lexicon baseline **byte-for-byte** (`40,083,208` bytes; `425` syllables, `553,351` Chinese word entries, `80,443` Jianpin entries, `21,313` English/CN-EN entries, `392,760` association/ranking edges, `32,768` neural word vectors, and `7,863` neural character vectors).
-- **`0.00ms` Zero-Copy `mmap` Mounting**: Mounted read-only in Lokey via `NSData(contentsOf:options: [.mappedIfSafe])` with `0.00ms` copy overhead.
+- **`v0.9.4` Neural Backbone Alignment**: Compiled from pinned `gaboolic/rime-frost` commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `Lokey v0.9.4`'s end-to-end QAT `LNLM-v2` forward backbone (`LNB2`: `7,832` mapped character embeddings, `4,163` QAT word overrides, `25,344`-byte MLP, aligned with Lokey's bundled `lokey_lnlm_bwd.bin` backward reranker) and distilled `conversational-bigrams.tsv` (`40,091,104` bytes / `38.23 MB`; `425` syllables, `553,351` Chinese word entries, `80,443` Jianpin entries, `21,313` English/CN-EN entries, `393,384` association/ranking edges including `4,799` merged conversational bigrams and `18` recalibrated commit-delta pairs, `32,768` neural word vectors, and `7,863` neural character vectors).
+- **Zero-Copy `mmap` Mounting**: Mounted read-only in Lokey via `NSData(contentsOf:options: [.mappedIfSafe])` with zero heap copy overhead, pairing directly with Lokey's bundled `LNBR v1` backward reranker, emoji table, and OpenCC converters.
 
 ### 2. Zero-Network Guarantee & GPL-3.0 Separation
 
@@ -131,7 +131,7 @@ python3 scripts/build_lokeypack.py
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) deterministically reproduces the `v0.7.15` baseline (`62ce08fa0c4a94d0e45d7d715016128b944685dd9cc3e4f8f2af18fecd221db9`), independent of `PYTHONHASHSEED`. To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
+> Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` deterministically reproduces the `v0.9.4` release (`40,091,104` bytes, SHA-256 `d705ffb2965daa1543dd99e89e668ed77edc90d8d3c1cd7a409bf5d491cb7133`; `https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.4`). To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
 
 ### 6. License & Attributions
 

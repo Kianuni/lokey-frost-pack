@@ -38,3 +38,12 @@
 - **License**: Creative Commons Attribution-ShareAlike 4.0 International (`CC-BY-SA-4.0`) — https://creativecommons.org/licenses/by-sa/4.0/
 - **Full Attribution Notice**: See `LICENSES/UD-Chinese-GSDSimp.txt` verbatim.
 - **Modifications**: Extracted simplified Chinese word contexts, mined competing homophone pairs, and fitted quantized 32-dim `LNLM v2` target-embedding residuals (`data/target-deltas.tsv`, embedded into `rime-frost.lokeypack`). No raw treebank text is redistributed.
+
+---
+
+## 4. Distilled Conversational Bigrams & QAT LNLM-v2 Neural Backbone (`v0.9.4`)
+
+- **Files**: `data/conversational-bigrams.tsv`, `data/lnlm_backbone_v2.bin.zlib`, `data/lnlm_backbone_chars.txt`
+- **Sources & Licenses**:
+  - Quantized 32-dim `LNLM-v2` backbone weights (`LNB2`: `25,344`-byte forward MLP + `7,832`-character embeddings + `4,163` word embeddings, `dims[30:32]` and `(alpha, h_bos, w_eos, u_eos)` preserved verbatim) distilled jointly against `UD_Chinese-GSDSimp` `v2.16` (`CC-BY-SA-4.0`), permissive MIT/Apache-2.0 modern Chinese conversational statistics, and `Qwen/Qwen2.5-7B-Instruct` teacher log-probability margins (`Apache-2.0`, zero raw corpus text or model weights redistributed).
+  - High-PMI 2–3 character conversational bigram frequency table (`data/conversational-bigrams.tsv`) derived from permissive Chinese dialogue & educational corpora and UD/frequency tables; no raw text is redistributed.

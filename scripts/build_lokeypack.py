@@ -17,6 +17,7 @@ import re
 import struct
 import subprocess
 import sys
+import zlib
 from collections import defaultdict
 from pathlib import Path
 
@@ -79,13 +80,14 @@ CURATED_CONVERSATIONAL_ASSOC: dict[str, list[str]] = {
     "没有": ["问题", "什么", "识别", "办法", "人", "时间", "关系", "看到", "收到", "必要", "延迟"],
     "识别": ["出来", "成功", "失败", "码", "不出", "不了", "结果", "率", "到"],
     "我们": ["可以", "一起", "的", "在", "去", "明天", "今天", "现在", "已经", "见", "都是"],
+    "你们": ["可以", "现在", "一起", "在", "去", "明天", "今天", "有空", "已经", "见", "都是"],
     "今天": ["下午", "晚上", "早上", "我们", "有空", "天气", "的", "去", "是", "休息"],
     "上午": ["开会", "有空", "上课", "有课", "见", "出发"],
     "中午": ["吃饭", "休息", "有空", "一起", "见"],
     "下午": ["有空", "有课", "开会", "上课", "休息", "见", "出发"],
     "晚上": ["吃饭", "有空", "一起", "见", "休息"],
     "昨天": ["晚上", "下午", "已经", "的", "看到", "说的", "去"],
-    "现在": ["可以", "在", "已经", "去", "怎么样", "开始", "还没有", "有空"],
+    "现在": ["可以", "出去", "在", "已经", "去", "怎么样", "开始", "还没有", "有空"],
     "什么": ["时候", "意思", "情况", "问题", "东西", "都", "样的", "事", "人"],
     "怎么": ["样", "办", "回事", "了", "说", "弄", "走", "去", "可能"],
     "为什么": ["不", "要", "会", "没有", "不能", "这么", "呢"],
@@ -151,6 +153,12 @@ CURATED_CONVERSATIONAL_ASSOC: dict[str, list[str]] = {
     "我来": ["试试", "看看", "说", "做", "帮", "写", "发"],
     "试试": ["看", "快速", "快速输入", "输入", "吧", "这个", "效果", "能不能", "一下"],
     "看看": ["这个", "那个", "吧", "呢", "怎么样", "效果", "能不能", "有", "什么", "情况"],
+    "有点": ["甜", "热", "冷", "累", "卡", "贵", "慢", "难", "意思", "不对"],
+    "见面": ["吧", "了", "再说", "聊", "的", "会"],
+    "刚进": ["电梯", "门", "来", "去", "公司"],
+    "要不": ["试试", "去", "一起", "算了", "先", "看看"],
+    "感觉": ["好像", "不错", "怎么样", "还可以", "挺好", "有点"],
+    "别": ["睡", "急", "忘了", "说", "动", "生气"],
     "这个": ["输入法", "问题", "时间", "时候", "怎么样", "可以", "方法", "东西", "模型", "很好用", "功能", "情况"],
     "那个": ["时候", "地方", "问题", "人", "东西", "怎么样", "可以"],
     "这种": ["情况", "问题", "方法", "感觉", "方式", "句子"],
@@ -962,10 +970,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    for req_tsv in ("mandarin-counts.tsv", "target-deltas.tsv", "commit-deltas.tsv"):
-        tsv_path = data_dir / req_tsv
-        if not tsv_path.is_file():
-            print(f"Error: Missing required data file: {tsv_path}", file=sys.stderr)
+    for req_file in (
+        "mandarin-counts.tsv",
+        "target-deltas.tsv",
+        "commit-deltas.tsv",
+        "conversational-bigrams.tsv",
+        "lnlm_backbone_v2.bin.zlib",
+        "lnlm_backbone_chars.txt",
+    ):
+        data_file_path = data_dir / req_file
+        if not data_file_path.is_file():
+            print(f"Error: Missing required data file: {data_file_path}", file=sys.stderr)
             return 1
 
     print("==> [1/5] Scanning rime-frost Chinese dictionaries...")
@@ -1634,6 +1649,34 @@ def main(argv: list[str] | None = None) -> int:
         for rank_i, cont in enumerate(cont_list):
             assoc_map[pref][cont] = max(assoc_map[pref].get(cont, 0), 3000 - rank_i * 65)
 
+    # Snapshot seed assoc_map BEFORE adding external conversational bigrams so Step 3 spectral
+    # propagation sees the pre-bigram distribution cleanly.
+    spectral_assoc_map: dict[str, dict[str, int]] = {p: dict(cs) for p, cs in assoc_map.items()}
+
+    if os.environ.get("LOKEY_SKIP_CONV_BIGRAMS") != "1":
+        conv_path = data_dir / "conversational-bigrams.tsv"
+        if conv_path.exists():
+            conv_added = 0
+            for raw in conv_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if not raw or raw.startswith("#"):
+                    continue
+                parts = raw.split("\t")
+                if len(parts) < 3:
+                    continue
+                w1, w2, w_str = parts[0], parts[1], parts[2]
+                if not (1 <= len(w1) <= 3 and 1 <= len(w2) <= 3):
+                    continue
+                if w1 not in top_prefixes or not all(c in simp_chars for c in w2):
+                    continue
+                try:
+                    w_val = int(w_str)
+                except ValueError:
+                    continue
+                if w_val > 0:
+                    record_assoc(w1, w2, float(w_val))
+                    conv_added += 1
+            print(f"    Merged {conv_added:,} distilled conversational bigrams into association table.")
+
     # Sort prefixes strictly by unsigned UTF-8 byte order to match MmapLexicon binary search!
     final_assoc: list[tuple[int, int, int, int, int, int]] = []
     # The reserved keys only take part in exact-reading ranking, never next-word
@@ -1676,6 +1719,7 @@ def main(argv: list[str] | None = None) -> int:
             "我", "你", "他", "她", "它", "我们", "你们", "他们", "她们", "咱们", "大家", "自己", "别人", "人家",
             "有人", "没人", "老板", "老师", "朋友", "同事", "同学", "爸", "妈", "爸爸", "妈妈", "老婆", "老公",
             "孩子", "宝宝", "哥", "姐", "弟", "妹", "客户", "领导", "医生",
+            "代表", "来宾", "客人", "长辈", "队员", "嘉宾", "选民", "乘客",
         ],
         1: [
             "今天", "明天", "昨天", "后天", "前天", "现在", "刚才", "刚刚", "刚", "才", "一会", "一会儿", "马上", "立刻",
@@ -1750,7 +1794,7 @@ def main(argv: list[str] | None = None) -> int:
             "困", "冷", "热", "凉快", "暖和", "舒服", "难受", "疼", "痛", "腼腆", "害羞", "尴尬", "奇怪",
             "正常", "自然", "重要", "严重", "简单", "容易", "难", "困难", "复杂", "方便", "麻烦", "清楚",
             "模糊", "认真", "仔细", "小心", "漂亮", "美", "帅", "酷", "棒", "厉害", "差", "糟糕", "安全",
-            "危险", "干净", "安静", "黏连", "粘连", "不安",
+            "危险", "干净", "安静", "黏连", "粘连", "不安", "甜", "咸", "酸", "苦", "辣", "淡",
             "合格", "合适", "合规", "合理", "合法", "标准", "划算", "靠谱", "优秀", "满意", "丰富", "完整", "稳定",
         ],
         13: [
@@ -2013,12 +2057,71 @@ def main(argv: list[str] | None = None) -> int:
                 cv[k] = c_map.get(k, 0.0)
                 tv[k] = t_map.get(k, 0.0)
 
+    # Load QAT end-to-end LNLM v2 backbone (`LNB2`) before word/char vocab selection so every
+    # backbone character & overridden word is guaranteed a slot in `sorted_chars` / `lnlm_word_set`.
+    backbone_path = data_dir / "lnlm_backbone_v2.bin.zlib"
+    backbone_chars_path = data_dir / "lnlm_backbone_chars.txt"
+    bb_chars = ""
+    bb_char_emb = b""
+    bb_mlp = b""
+    bb_word_overrides: dict[str, bytes] = {}
+    bb_loaded = False
+    if os.environ.get("LOKEY_SKIP_LNLM_BACKBONE") != "1" and backbone_path.exists():
+        raw_bb = zlib.decompress(backbone_path.read_bytes())
+        if len(raw_bb) < 48:
+            raise ValueError(f"LNLM backbone image too small: {backbone_path}")
+        bb_magic, bb_ver, bb_c_count, bb_w_count, bb_chars_sha = struct.unpack_from("<4sIII32s", raw_bb, 0)
+        if bb_magic != b"LNB2" or bb_ver != 1:
+            raise ValueError(f"Unsupported LNLM backbone header: magic={bb_magic!r} ver={bb_ver}")
+        if not backbone_chars_path.is_file():
+            raise ValueError(f"Missing LNLM backbone char index: {backbone_chars_path}")
+        bb_chars = backbone_chars_path.read_text(encoding="utf-8")
+        if len(bb_chars) != bb_c_count:
+            raise ValueError(f"LNLM backbone char count mismatch: {bb_c_count} vs {len(bb_chars)}")
+        expected_sha = hashlib.sha256(bb_chars.encode("utf-8")).digest()
+        if bb_chars_sha != expected_sha:
+            raise ValueError("LNLM backbone char table SHA-256 mismatch")
+
+        cursor = 48
+        c_bytes_len = (bb_c_count + 1) * 64
+        if len(raw_bb) < cursor + c_bytes_len + 25344:
+            raise ValueError("LNLM backbone truncated before embeddings/MLP")
+        bb_char_emb = raw_bb[cursor : cursor + c_bytes_len]
+        cursor += c_bytes_len
+        if bb_char_emb[:64] != b"\x00" * 64:
+            raise ValueError("LNLM backbone cid=0 char embedding must remain zero")
+
+        bb_mlp = raw_bb[cursor : cursor + 25344]
+        cursor += 25344
+
+        for _ in range(bb_w_count):
+            if cursor + 2 > len(raw_bb):
+                raise ValueError("LNLM backbone truncated inside word override header")
+            (w_len,) = struct.unpack_from("<H", raw_bb, cursor)
+            cursor += 2
+            if cursor + w_len + 64 > len(raw_bb):
+                raise ValueError("LNLM backbone truncated inside word override body")
+            w_str = raw_bb[cursor : cursor + w_len].decode("utf-8")
+            cursor += w_len
+            vec64 = raw_bb[cursor : cursor + 64]
+            cursor += 64
+            bb_word_overrides[w_str] = vec64
+        if cursor != len(raw_bb):
+            raise ValueError(f"LNLM backbone trailing bytes: {len(raw_bb) - cursor}")
+        for ch in bb_chars:
+            ensure_char_vec(ch)
+        bb_loaded = True
+
     # Select top 32,768 words for the explicit LNLM v2 neural word embedding table
     lnlm_vocab_cap = 32768
     lnlm_word_set: set[str] = set()
     for w_list in seed_classes.values():
         lnlm_word_set.update(w_list)
     lnlm_word_set.update(target_delta_words)
+    if bb_loaded:
+        for w in bb_word_overrides.keys():
+            if 1 <= len(w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in w):
+                lnlm_word_set.add(w)
     lnlm_word_set.update(composite_overrides.keys())
     lnlm_word_set.update(CURATED_CONVERSATIONAL_ASSOC.keys())
     for cont_list in CURATED_CONVERSATIONAL_ASSOC.values():
@@ -2208,7 +2311,7 @@ def main(argv: list[str] | None = None) -> int:
     ctx_counts: dict[str, float] = defaultdict(float)
     tgt_counts: dict[str, float] = defaultdict(float)
 
-    for pref, conts in assoc_map.items():
+    for pref, conts in spectral_assoc_map.items():
         if pref not in lnlm_word_set:
             continue
         p_ctx = word_ctx_vecs[pref]
@@ -2557,12 +2660,15 @@ def main(argv: list[str] | None = None) -> int:
     # Only the output embedding changes. The recurrent state, 32-dimension SIMD
     # representation and lexical frequency prior remain compatible with LNLM v2.
     learned_targets = {}
-    for line in (data_dir / "target-deltas.tsv").read_text(encoding="utf-8").splitlines():
-        word, encoded = line.split("\t")
-        delta = struct.unpack("<32b", bytes.fromhex(encoded))
-        if word in learned_targets or delta[30:] != (0, 0):
-            raise ValueError(f"Invalid LNLM residual for {word}")
-        learned_targets[word] = delta
+    if os.environ.get("LOKEY_SKIP_TARGET_DELTAS") != "1":
+        for line in (data_dir / "target-deltas.tsv").read_text(encoding="utf-8").splitlines():
+            if "\t" not in line:
+                continue
+            word, encoded = line.split("\t")
+            delta = struct.unpack("<32b", bytes.fromhex(encoded))
+            if word in learned_targets or delta[30:] != (0, 0):
+                raise ValueError(f"Invalid LNLM residual for {word}")
+            learned_targets[word] = delta
     sorted_lnlm_words = sorted(lnlm_word_set, key=lambda s: s.encode("utf-8"))
     if not learned_targets.keys() <= lnlm_word_set:
         raise ValueError("LNLM residuals do not match the seed vocabulary")
@@ -2592,6 +2698,55 @@ def main(argv: list[str] | None = None) -> int:
     for vec in (alpha_vec, h_bos_vec, w_eos_vec, u_eos_vec):
         mlp_buf.extend(struct.pack("<32f", *vec))
     assert len(mlp_buf) == 25344, f"Expected 25344 MLP bytes, got {len(mlp_buf)}"
+
+    contrastive_word_count = len(learned_targets)
+    if bb_loaded:
+        frost_cid_by_char = {ch: idx for idx, ch in enumerate(sorted_chars, start=1)}
+        for bb_cid, ch in enumerate(bb_chars, start=1):
+            frost_cid = frost_cid_by_char[ch]
+            bb_off = bb_cid * 64
+            frost_off = frost_cid * 64
+            if bb_char_emb[bb_off + 30] != char_emb_buf[frost_off + 30]:
+                raise ValueError(f"LNLM backbone mutated char_ctx[30] for '{ch}' (bb_cid={bb_cid}, frost_cid={frost_cid})")
+            if bb_char_emb[bb_off + 62] != char_emb_buf[frost_off + 62]:
+                raise ValueError(f"LNLM backbone mutated char_tgt[30] for '{ch}' (bb_cid={bb_cid}, frost_cid={frost_cid})")
+            char_emb_buf[frost_off : frost_off + 64] = bb_char_emb[bb_off : bb_off + 64]
+
+        mlp_floats = struct.unpack("<6336f", bb_mlp)
+        for idx, fv in enumerate(mlp_floats):
+            if not math.isfinite(fv) or abs(fv) > 1.0e5:
+                raise ValueError(f"LNLM backbone non-finite/huge float at index {idx}: {fv}")
+        if bb_mlp[-512:] != bytes(mlp_buf[-512:]):
+            raise ValueError("LNLM backbone mutated frozen (alpha, h_bos, w_eos, u_eos) vectors")
+        mlp_buf = bytearray(bb_mlp)
+
+        applied_word_overrides = {w: vec for w, vec in bb_word_overrides.items() if w in lnlm_word_set}
+        rebuilt_word_buf = bytearray()
+        for w in sorted_lnlm_words:
+            s_off, s_len = intern_str(w)
+            rebuilt_word_buf.extend(struct.pack("<IHH", s_off, s_len, 0))
+            base_ctx = quantize_vec32(word_ctx_vecs[w])
+            base_tgt = quantize_vec32(word_tgt_vecs[w])
+            if w in applied_word_overrides:
+                ov = applied_word_overrides[w]
+                if ov[30] != base_ctx[30] or ov[62] != base_tgt[30]:
+                    raise ValueError(f"LNLM backbone mutated dim[30] for word {w}")
+                rebuilt_word_buf.extend(ov)
+            else:
+                if w in learned_targets:
+                    old = struct.unpack("<32b", base_tgt)
+                    base_tgt = struct.pack(
+                        "<32b", *(max(-127, min(127, a + b)) for a, b in zip(old, learned_targets[w]))
+                    )
+                rebuilt_word_buf.extend(base_ctx)
+                rebuilt_word_buf.extend(base_tgt)
+        word_table_buf = rebuilt_word_buf
+        contrastive_word_count = max(contrastive_word_count, len(applied_word_overrides))
+        print(
+            f"    Applied end-to-end distilled LNLM v2 backbone ({len(bb_chars):,} chars mapped, "
+            f"{len(applied_word_overrides):,} word overrides, 25,344B MLP)."
+        )
+
     print(
         f"    Trained LNLM v2 neural model: {len(sorted_chars):,} chars, "
         f"{len(sorted_lnlm_words):,} words, {len(mlp_buf):,} bytes 32-dim SIMD MLP weights."
@@ -2773,7 +2928,7 @@ def main(argv: list[str] | None = None) -> int:
         "association_entries": len(final_assoc),
         "neural_lm_chars": len(sorted_chars),
         "neural_lm_words": len(sorted_lnlm_words),
-        "neural_lm_contrastive_words": len(learned_targets),
+        "neural_lm_contrastive_words": contrastive_word_count,
         "neural_lm_commit_pairs": sum(len(pairs) for pairs in commit_index.values()),
         "neural_lm_training_treebank": "UD_Chinese-GSDSimp r2.16",
         "neural_lm_attribution": "Target residuals adapted by Lokey from UD Chinese GSDSimp (Peng Qi, Koichi Yasuoka and GSD contributors).",
