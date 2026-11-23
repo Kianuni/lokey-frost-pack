@@ -1693,7 +1693,7 @@ def main(argv: list[str] | None = None) -> int:
                 if w_val > 0:
                     record_assoc(w1, w2, float(w_val))
                     conv_added += 1
-            print(f"    Merged {conv_added:,} distilled conversational bigrams into association table.")
+            print(f"    Merged {conv_added:,} conversational bigrams into association table.")
 
         assoc_v2_path = data_dir / "conversational-assoc-v2.tsv"
         if assoc_v2_path.exists():
@@ -2158,8 +2158,8 @@ def main(argv: list[str] | None = None) -> int:
     lnlm_word_set: set[str] = set()
     for w_list in seed_classes.values():
         lnlm_word_set.update(w_list)
-    is_full_vocab_distill = (len(bb_word_overrides) + len(target_delta_words)) > 16384
-    if not is_full_vocab_distill:
+    is_full_vocab_backbone = (len(bb_word_overrides) + len(target_delta_words)) > 16384
+    if not is_full_vocab_backbone:
         lnlm_word_set.update(target_delta_words)
         if bb_loaded:
             for w in bb_word_overrides.keys():
@@ -2170,22 +2170,22 @@ def main(argv: list[str] | None = None) -> int:
     for cont_list in CURATED_CONVERSATIONAL_ASSOC.values():
         lnlm_word_set.update(cont_list)
 
-    priority_distilled_candidates: list[str] = []
-    if is_full_vocab_distill:
+    priority_override_candidates: list[str] = []
+    if is_full_vocab_backbone:
         if len(target_delta_word_list) <= 8192:
             for td_w in target_delta_word_list:
                 if len(lnlm_word_set) >= lnlm_vocab_cap:
                     break
                 if td_w in word_max_w and 1 <= len(td_w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in td_w):
                     lnlm_word_set.add(td_w)
-        # Admit distilled override / target-delta words attested in rime-frost (ordered by empirical weight)
+        # Admit calibrated override / target-delta words attested in rime-frost (ordered by empirical weight)
         seen_prio: set[str] = set()
         for w in list(bb_word_overrides.keys()) + target_delta_word_list:
             if w not in seen_prio and 1 <= len(w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in w):
                 seen_prio.add(w)
-                priority_distilled_candidates.append(w)
-        priority_distilled_candidates.sort(key=lambda w: word_max_w.get(w, -1.0), reverse=True)
-        for w in priority_distilled_candidates:
+                priority_override_candidates.append(w)
+        priority_override_candidates.sort(key=lambda w: word_max_w.get(w, -1.0), reverse=True)
+        for w in priority_override_candidates:
             if len(lnlm_word_set) >= lnlm_vocab_cap:
                 break
             if w in word_max_w:
@@ -2200,8 +2200,8 @@ def main(argv: list[str] | None = None) -> int:
         if len(lnlm_word_set) >= lnlm_vocab_cap:
             break
         lnlm_word_set.add(txt)
-    if is_full_vocab_distill:
-        for w in priority_distilled_candidates:
+    if is_full_vocab_backbone:
+        for w in priority_override_candidates:
             if len(lnlm_word_set) >= lnlm_vocab_cap:
                 break
             lnlm_word_set.add(w)
@@ -2802,8 +2802,8 @@ def main(argv: list[str] | None = None) -> int:
                 ov = applied_word_overrides[w]
                 if len(w) > 1 and (ov[30] != 0 or ov[62] != 0):
                     raise ValueError(f"LNLM backbone set singleton dim[30] on multi-char word {w}")
-                if is_full_vocab_distill:
-                    # Graft distilled dims[0..29] onto rime-frost's own dims[30..31] lexical invariants
+                if is_full_vocab_backbone:
+                    # Combine backbone dims[0..29] with rime-frost's own dims[30..31] lexical invariants
                     rebuilt_word_buf.extend(ov[:30] + base_ctx[30:32] + ov[32:62] + base_tgt[30:32])
                 else:
                     rebuilt_word_buf.extend(ov)
@@ -2818,7 +2818,7 @@ def main(argv: list[str] | None = None) -> int:
         word_table_buf = rebuilt_word_buf
         contrastive_word_count = max(contrastive_word_count, len(applied_word_overrides))
         print(
-            f"    Applied end-to-end distilled LNLM v2 backbone ({len(bb_chars):,} chars mapped, "
+            f"    Applied LNLM v2 neural backbone ({len(bb_chars):,} chars mapped, "
             f"{len(applied_word_overrides):,} word overrides, 25,344B MLP)."
         )
 
