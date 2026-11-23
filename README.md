@@ -8,7 +8,7 @@
 
 ## 中文说明
 
-`lokey-frost-pack` 是为 **Lokey（`Kianuni/Lokey`）** iOS 26 键全拼输入法提供的**纯离线 `GPL-3.0` 外部词库包与独立编译器仓库**。
+`lokey-frost-pack` 是为 **Lokey（`Kianuni/Lokey`）** iOS 26 键全拼与小鹤/自然码双拼输入法提供的**纯离线 `GPL-3.0` 外部词库包与独立编译器仓库**。
 
 ### 1. 词库包概览
 
@@ -78,7 +78,7 @@ python3 scripts/build_lokeypack.py
 
 ## English
 
-`lokey-frost-pack` is a standalone, offline **`GPL-3.0`** `.lokeypack` lexicon pack and compiler repository for the **Lokey (`Kianuni/Lokey`)** iOS 26-key Full-Pinyin keyboard.
+`lokey-frost-pack` is a standalone, offline **`GPL-3.0`** `.lokeypack` lexicon pack and compiler repository for the **Lokey (`Kianuni/Lokey`)** iOS 26-key Full-Pinyin & Xiaohe/Ziranma Shuangpin keyboard.
 
 ### 1. Pack Overview
 
