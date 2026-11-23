@@ -1,9 +1,12 @@
 # Upstream cloned lexicon (fetched via ./scripts/fetch_rime_frost.sh)
 vendor/
 
-# Compiled binary packs (kept on disk in dist/ for GitHub Releases, excluded from git history;
+# Compiled binary packs & redundant standalone sidecars (embedded inside rime-frost.lokeypack via LKEX v1;
 # dist/rime-frost.lokeypack.sha256 remains tracked)
 dist/*.lokeypack
+dist/*.lokeypack.bwd
+dist/*.lokeypack.lntr
+dist/*.lokeypack.sem64
 
 # Build & Xcode artifacts
 build/

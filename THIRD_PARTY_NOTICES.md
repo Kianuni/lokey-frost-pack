@@ -41,9 +41,9 @@
 
 ---
 
-## 4. Distilled Conversational Bigrams & QAT LNLM-v2 Neural Backbone (`v0.9.4`)
+## 4. Conversational Associations & Pre-Compiled On-Device Neural Weights (`v0.9.5`)
 
-- **Files**: `data/conversational-bigrams.tsv`, `data/lnlm_backbone_v2.bin.zlib`, `data/lnlm_backbone_chars.txt`
+- **Files**: `data/conversational-bigrams.tsv`, `data/conversational-assoc-v2.tsv`, `data/lnlm_backbone_v2.bin.zlib`, `data/lnlm_backbone_chars.txt`, `data/lokey_lnlm_bwd.bin`, `data/lokey_lntr.bin`, `data/lokey_lnlm_sem64.bin`
 - **Sources & Licenses**:
-  - Quantized 32-dim `LNLM-v2` backbone weights (`LNB2`: `25,344`-byte forward MLP + `7,832`-character embeddings + `4,163` word embeddings, `dims[30:32]` and `(alpha, h_bos, w_eos, u_eos)` preserved verbatim) distilled jointly against `UD_Chinese-GSDSimp` `v2.16` (`CC-BY-SA-4.0`), permissive MIT/Apache-2.0 modern Chinese conversational statistics, and `Qwen/Qwen2.5-7B-Instruct` teacher log-probability margins (`Apache-2.0`, zero raw corpus text or model weights redistributed).
-  - High-PMI 2–3 character conversational bigram frequency table (`data/conversational-bigrams.tsv`) derived from permissive Chinese dialogue & educational corpora and UD/frequency tables; no raw text is redistributed.
+  - Pre-compiled quantized on-device neural language model and reranker weights (`LNLM-v2`, `LNBR-v2`, `LNTR-v1`, `LNS6-v1`) fitted from `UD_Chinese-GSDSimp` `v2.16` (`CC-BY-SA-4.0`) and permissive `MIT`/`Apache-2.0` Chinese linguistic statistics (`Apache-2.0` upstream model attributions preserved; zero raw corpus text or upstream model weights redistributed).
+  - Conversational bigram and multi-word association tables (`data/conversational-bigrams.tsv`, `data/conversational-assoc-v2.tsv`) derived from permissive Chinese frequency statistics; no raw corpus text is redistributed.

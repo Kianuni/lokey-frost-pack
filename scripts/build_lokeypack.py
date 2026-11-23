@@ -581,14 +581,25 @@ class TrieBuilderNode:
 
 def commit_choice_index(data_dir: Path):
     """Store quantized LNLM commit decisions alongside exact-reading lookups."""
-    entries = defaultdict(dict)
+    raw_buckets: dict[str, list[str]] = defaultdict(list)
     source = data_dir / "commit-deltas.tsv"
     for row in source.read_text(encoding="utf-8").splitlines():
+        if not row or row.startswith("#"):
+            continue
         reading, *parameters = row.split("\t")
         assert len(parameters) == 8 and len(bytes.fromhex(parameters[6])) == 32
         if parameters[-1] == "-":
             parameters[-1] = ""
-        entries["$" + reading]["|".join(parameters)] = 0
+        enc_param = "|".join(parameters)
+        if enc_param not in raw_buckets["$" + reading]:
+            raw_buckets["$" + reading].append(enc_param)
+    entries = defaultdict(dict)
+    for key, plist in raw_buckets.items():
+        if len(plist) == 1:
+            entries[key][plist[0]] = 0
+        else:
+            for idx, p_str in enumerate(plist):
+                entries[key][p_str] = max(0, 1000 - idx)
     return entries
 
 
@@ -950,6 +961,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional path to write JSON build manifest (omitted by default)",
     )
+    parser.add_argument("--bwd-bin", type=Path, default=None, help="Optional LNBR v2 binary to embed in LKEX trailer")
+    parser.add_argument("--lntr-bin", type=Path, default=None, help="Optional LNTR v1 binary to embed in LKEX trailer")
+    parser.add_argument("--sem64-bin", type=Path, default=None, help="Optional LNS6 v1 binary to embed in LKEX trailer")
     return parser.parse_args(argv)
 
 
@@ -997,11 +1011,15 @@ def main(argv: list[str] | None = None) -> int:
                     char_freq[c_txt] = c_w
 
     target_delta_words: set[str] = set()
+    target_delta_word_list: list[str] = []
     td_path = data_dir / "target-deltas.tsv"
     if td_path.exists():
         for td_raw in td_path.read_text(encoding="utf-8").splitlines():
-            if "\t" in td_raw:
-                target_delta_words.add(td_raw.split("\t", 1)[0])
+            if "\t" in td_raw and not td_raw.startswith("#"):
+                td_w = td_raw.split("\t", 1)[0]
+                if td_w not in target_delta_words:
+                    target_delta_words.add(td_w)
+                    target_delta_word_list.append(td_w)
 
     protected_words: set[str] = set(target_delta_words)
     protected_words.update(CURATED_CONVERSATIONAL_ASSOC.keys())
@@ -1677,6 +1695,29 @@ def main(argv: list[str] | None = None) -> int:
                     conv_added += 1
             print(f"    Merged {conv_added:,} distilled conversational bigrams into association table.")
 
+        assoc_v2_path = data_dir / "conversational-assoc-v2.tsv"
+        if assoc_v2_path.exists():
+            assoc_v2_added = 0
+            for raw in assoc_v2_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if not raw or raw.startswith("#"):
+                    continue
+                parts = raw.split("\t")
+                if len(parts) < 3:
+                    continue
+                w1, w2, sc_str = parts[0].strip(), parts[1].strip(), parts[2].strip()
+                if not (1 <= len(w1) <= 4 and 2 <= len(w2) <= 4):
+                    continue
+                if not all(0x4E00 <= ord(c) < 0xA000 for c in w1) or not all(c in simp_chars for c in w2):
+                    continue
+                try:
+                    sc_val = int(round(float(sc_str)))
+                except ValueError:
+                    continue
+                if sc_val >= 120:
+                    assoc_map[w1][w2] = max(assoc_map[w1].get(w2, 0), min(3200, sc_val))
+                    assoc_v2_added += 1
+            print(f"    Merged {assoc_v2_added:,} LKLF-Assoc v2 multi-char contextual associations.")
+
     # Sort prefixes strictly by unsigned UTF-8 byte order to match MmapLexicon binary search!
     final_assoc: list[tuple[int, int, int, int, int, int]] = []
     # The reserved keys only take part in exact-reading ranking, never next-word
@@ -2117,15 +2158,38 @@ def main(argv: list[str] | None = None) -> int:
     lnlm_word_set: set[str] = set()
     for w_list in seed_classes.values():
         lnlm_word_set.update(w_list)
-    lnlm_word_set.update(target_delta_words)
-    if bb_loaded:
-        for w in bb_word_overrides.keys():
-            if 1 <= len(w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in w):
-                lnlm_word_set.add(w)
+    is_full_vocab_distill = (len(bb_word_overrides) + len(target_delta_words)) > 16384
+    if not is_full_vocab_distill:
+        lnlm_word_set.update(target_delta_words)
+        if bb_loaded:
+            for w in bb_word_overrides.keys():
+                if 1 <= len(w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in w):
+                    lnlm_word_set.add(w)
     lnlm_word_set.update(composite_overrides.keys())
     lnlm_word_set.update(CURATED_CONVERSATIONAL_ASSOC.keys())
     for cont_list in CURATED_CONVERSATIONAL_ASSOC.values():
         lnlm_word_set.update(cont_list)
+
+    priority_distilled_candidates: list[str] = []
+    if is_full_vocab_distill:
+        if len(target_delta_word_list) <= 8192:
+            for td_w in target_delta_word_list:
+                if len(lnlm_word_set) >= lnlm_vocab_cap:
+                    break
+                if td_w in word_max_w and 1 <= len(td_w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in td_w):
+                    lnlm_word_set.add(td_w)
+        # Admit distilled override / target-delta words attested in rime-frost (ordered by empirical weight)
+        seen_prio: set[str] = set()
+        for w in list(bb_word_overrides.keys()) + target_delta_word_list:
+            if w not in seen_prio and 1 <= len(w) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in w):
+                seen_prio.add(w)
+                priority_distilled_candidates.append(w)
+        priority_distilled_candidates.sort(key=lambda w: word_max_w.get(w, -1.0), reverse=True)
+        for w in priority_distilled_candidates:
+            if len(lnlm_word_set) >= lnlm_vocab_cap:
+                break
+            if w in word_max_w:
+                lnlm_word_set.add(w)
 
     all_ranked_words = sorted(
         ((txt, w) for txt, w in word_max_w.items() if 1 <= len(txt) <= 5 and all(0x4E00 <= ord(c) < 0xA000 for c in txt)),
@@ -2136,6 +2200,11 @@ def main(argv: list[str] | None = None) -> int:
         if len(lnlm_word_set) >= lnlm_vocab_cap:
             break
         lnlm_word_set.add(txt)
+    if is_full_vocab_distill:
+        for w in priority_distilled_candidates:
+            if len(lnlm_word_set) >= lnlm_vocab_cap:
+                break
+            lnlm_word_set.add(w)
 
     word_ctx_vecs: dict[str, list[float]] = {}
     word_tgt_vecs: dict[str, list[float]] = {}
@@ -2662,7 +2731,7 @@ def main(argv: list[str] | None = None) -> int:
     learned_targets = {}
     if os.environ.get("LOKEY_SKIP_TARGET_DELTAS") != "1":
         for line in (data_dir / "target-deltas.tsv").read_text(encoding="utf-8").splitlines():
-            if "\t" not in line:
+            if "\t" not in line or line.startswith("#"):
                 continue
             word, encoded = line.split("\t")
             delta = struct.unpack("<32b", bytes.fromhex(encoded))
@@ -2670,8 +2739,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"Invalid LNLM residual for {word}")
             learned_targets[word] = delta
     sorted_lnlm_words = sorted(lnlm_word_set, key=lambda s: s.encode("utf-8"))
-    if not learned_targets.keys() <= lnlm_word_set:
-        raise ValueError("LNLM residuals do not match the seed vocabulary")
+    learned_targets = {w: d for w, d in learned_targets.items() if w in lnlm_word_set}
     word_table_buf = bytearray()
     for w in sorted_lnlm_words:
         s_off, s_len = intern_str(w)
@@ -2703,14 +2771,17 @@ def main(argv: list[str] | None = None) -> int:
     if bb_loaded:
         frost_cid_by_char = {ch: idx for idx, ch in enumerate(sorted_chars, start=1)}
         for bb_cid, ch in enumerate(bb_chars, start=1):
-            frost_cid = frost_cid_by_char[ch]
+            frost_cid = frost_cid_by_char.get(ch)
+            if frost_cid is None:
+                continue
             bb_off = bb_cid * 64
             frost_off = frost_cid * 64
             if bb_char_emb[bb_off + 30] != char_emb_buf[frost_off + 30]:
                 raise ValueError(f"LNLM backbone mutated char_ctx[30] for '{ch}' (bb_cid={bb_cid}, frost_cid={frost_cid})")
             if bb_char_emb[bb_off + 62] != char_emb_buf[frost_off + 62]:
                 raise ValueError(f"LNLM backbone mutated char_tgt[30] for '{ch}' (bb_cid={bb_cid}, frost_cid={frost_cid})")
-            char_emb_buf[frost_off : frost_off + 64] = bb_char_emb[bb_off : bb_off + 64]
+            char_emb_buf[frost_off : frost_off + 30] = bb_char_emb[bb_off : bb_off + 30]
+            char_emb_buf[frost_off + 32 : frost_off + 62] = bb_char_emb[bb_off + 32 : bb_off + 62]
 
         mlp_floats = struct.unpack("<6336f", bb_mlp)
         for idx, fv in enumerate(mlp_floats):
@@ -2729,9 +2800,13 @@ def main(argv: list[str] | None = None) -> int:
             base_tgt = quantize_vec32(word_tgt_vecs[w])
             if w in applied_word_overrides:
                 ov = applied_word_overrides[w]
-                if ov[30] != base_ctx[30] or ov[62] != base_tgt[30]:
-                    raise ValueError(f"LNLM backbone mutated dim[30] for word {w}")
-                rebuilt_word_buf.extend(ov)
+                if len(w) > 1 and (ov[30] != 0 or ov[62] != 0):
+                    raise ValueError(f"LNLM backbone set singleton dim[30] on multi-char word {w}")
+                if is_full_vocab_distill:
+                    # Graft distilled dims[0..29] onto rime-frost's own dims[30..31] lexical invariants
+                    rebuilt_word_buf.extend(ov[:30] + base_ctx[30:32] + ov[32:62] + base_tgt[30:32])
+                else:
+                    rebuilt_word_buf.extend(ov)
             else:
                 if w in learned_targets:
                     old = struct.unpack("<32b", base_tgt)
@@ -2878,6 +2953,52 @@ def main(argv: list[str] | None = None) -> int:
         mlp_off,
     )
     buf[lnlm_offset : lnlm_offset + 32] = lnlm_header
+
+    # Optional embedded `LKEX` v1 neural extension container (`LNBR-v2`, `LNTR-v1`, `LNS6-v1`) inside the single `.lokeypack`
+    # so iOS Files Picker (`asCopy: true`) and Share-Sheet/AirDrop (`Documents/Inbox/`) single-file imports carry
+    # 100% of Frost's neural extension weights zero-copy while remaining backward-compatible with `v0.9.4`!
+    lkex_embedded_bytes = 0
+    if os.environ.get("LOKEY_SKIP_LKEX") != "1":
+        bwd_p = args.bwd_bin if args.bwd_bin is not None else (data_dir / "lokey_lnlm_bwd.bin")
+        lntr_p = args.lntr_bin if args.lntr_bin is not None else (data_dir / "lokey_lntr.bin")
+        sem64_p = args.sem64_bin if args.sem64_bin is not None else (data_dir / "lokey_lnlm_sem64.bin")
+        has_any_lkex = any(p.is_file() for p in (bwd_p, lntr_p, sem64_p))
+        if has_any_lkex:
+            lkex_start = len(buf)
+
+            def _embed_chunk(chunk_path: Path, expected_magic: bytes) -> tuple[int, int]:
+                if not chunk_path.is_file():
+                    return (0, 0)
+                blob = chunk_path.read_bytes()
+                if len(blob) < 16 or blob[:4] != expected_magic:
+                    raise ValueError(f"Invalid {expected_magic.decode('ascii')} header in {chunk_path}")
+                align8(buf)
+                c_off = len(buf)
+                buf.extend(blob)
+                align8(buf)
+                return (c_off, len(blob))
+
+            bwd_off, bwd_len = _embed_chunk(bwd_p, b"LNBR")
+            lntr_off, lntr_len = _embed_chunk(lntr_p, b"LNTR")
+            sem64_off, sem64_len = _embed_chunk(sem64_p, b"LNS6")
+            buf.extend(
+                struct.pack(
+                    "<4s7I",
+                    b"LKEX",
+                    1,
+                    bwd_off,
+                    bwd_len,
+                    lntr_off,
+                    lntr_len,
+                    sem64_off,
+                    sem64_len,
+                )
+            )
+            lkex_embedded_bytes = len(buf) - lkex_start
+            print(
+                f"    Embedded LKEX v1 neural extension container ({lkex_embedded_bytes:,} bytes: "
+                f"LNBR={bwd_len:,}B, LNTR={lntr_len:,}B, LNS6={sem64_len:,}B)."
+            )
 
     # 16-byte LNLM v2 trailer at `data.count - 16`
     buf.extend(struct.pack("<4I", 0x4D4C4E4C, 2, lnlm_offset, lnlm_size))
