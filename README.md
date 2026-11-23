@@ -67,10 +67,10 @@ python3 scripts/build_lokeypack.py
 >
 > **单文件 `LKEX v1` 扩展支持**：`scripts/build_lokeypack.py` 支持全词表 `32,768` 神经词向量、`1,600` 对高难同音词消歧（`data/commit-deltas.tsv`）与多字上下文联想（`data/conversational-assoc-v2.tsv`），并在 `data/` 包含 `lokey_lnlm_bwd.bin`（`LNBR-v2`）、`lokey_lntr.bin`（`LNTR-v1`）或 `lokey_lnlm_sem64.bin`（`LNS6-v1`）时自动将其以零拷贝 `LKEX v1` 扩展段内嵌进**单个** `rime-frost.lokeypack` 中，兼容 iOS「文件」App 与隔空投送单文件导入，且与旧版客户端双向兼容。
 
-### 6. 开源许可与致谢
+### 6. 开源许可声明
 
-- 仓库整体及编译产物遵循 **GPL-3.0**（见 `LICENSE` 与 `LICENSES/rime-frost-GPL-3.0.txt`）。
-- 第三方语料与残差权重声明见 `THIRD_PARTY_NOTICES.md`、`LICENSES/Tatoeba.txt`（`CC-BY-2.0 FR`）及 `LICENSES/UD-Chinese-GSDSimp.txt`（`CC-BY-SA-4.0`）。
+- 仓库整体及编译产物遵循 **GPL-3.0**（见 `LICENSE`）。
+- 第三方数据与权重许可声明见 `THIRD_PARTY_NOTICES.md` 与 `LICENSES/`。
 
 ---
 
@@ -135,7 +135,7 @@ python3 scripts/build_lokeypack.py
 
 > Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` deterministically reproduces the `v0.9.5` release (`46,477,184` bytes, SHA-256 `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`; `https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`). To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
 
-### 6. License & Attributions
+### 6. License
 
-- **License**: `GPL-3.0` (`LICENSE`, `LICENSES/rime-frost-GPL-3.0.txt`).
-- **Third-Party Attributions**: See `THIRD_PARTY_NOTICES.md`, `LICENSES/Tatoeba.txt` (`CC-BY-2.0 FR`), and `LICENSES/UD-Chinese-GSDSimp.txt` (`CC-BY-SA-4.0`).
+- **License**: `GPL-3.0` (`LICENSE`).
+- **Third-Party Notices**: See `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
