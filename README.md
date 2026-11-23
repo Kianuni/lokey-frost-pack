@@ -13,7 +13,7 @@
 ### 1. 词库包概览
 
 - **二进制格式**：`LKLF-v2` + 内嵌 `LNLM-v2`（32 维 SIMD 神经整句打分）+ 单文件零拷贝 `LKEX v1` 扩展段（内嵌 `LNBR-v2` 逆向句首重排、`LNTR-v1` 盲打纠错重排与 `LNS6-v1` 64 维语义话题记忆）+ `EOF-16` 尾部校验结构（仅含词库与语言模型，不含表情符号或 OpenCC 二进制，且向下兼容旧版客户端）。
-- **`v0.9.5` 词库与模型内容**：基于 `gaboolic/rime-frost` 固定提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）编译，总大小 `46,340,296` 字节（`44.19 MB`），包含 `425` 个音节、`553,351` 条中文词条、`80,443` 条简拼索引、`21,313` 条英文及中英混输词条、`396,498` 条联想与排序边（覆盖双字与多字上下文联想及 `1,650` 对高难同音词消歧）、`32,768` 个神经词向量、`7,863` 个神经字向量，以及单文件内嵌的 `LNBR-v2`（`79,317` 字节）、`LNTR-v1`（`46,768` 字节）与 `LNS6-v1`（`5,762,232` 字节）。
+- **`v0.9.5` 词库与模型内容**：基于 `gaboolic/rime-frost` 固定提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）编译，总大小 `46,477,184` 字节（`44.32 MB`），包含 `425` 个音节、`553,352` 条中文词条、`80,443` 条简拼索引、`21,313` 条英文及中英混输词条、`396,980` 条联想与排序边（覆盖双字与多字上下文联想及 `1,600` 对高难同音词消歧）、`32,768` 个神经词向量、`7,863` 个神经字向量，以及单文件内嵌的 `LNBR-v2`（`200,566` 字节）、`LNTR-v1`（`46,768` 字节）与 `LNS6-v1`（`5,762,320` 字节）。
 - **单文件零拷贝挂载**：导入单个 `rime-frost.lokeypack` 后由 Lokey 通过 `NSData(contentsOf:options: [.mappedIfSafe])` 以只读 `mmap` 方式直接热挂载，即刻启用完整的词库、整句重排、盲打纠错与上下文话题记忆能力，无堆内存拷贝开销。
 
 ### 2. 物理零联网与 GPL-3.0 商业隔离说明
@@ -63,9 +63,9 @@ python3 scripts/build_lokeypack.py
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> 说明：默认固定拉取 `gaboolic/rime-frost` 提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`），使用 `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` 可 100% 确定性复现 `v0.9.5` 发布版（`46,340,296` 字节，SHA-256 `ce47aebb90365d1811d356890847bef5450e0c3f6088c558d54a03cd5d97130b`；GitHub Release：`https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`）。如希望测试上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义目录。
+> 说明：默认固定拉取 `gaboolic/rime-frost` 提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`），使用 `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` 可 100% 确定性复现 `v0.9.5` 发布版（`46,477,184` 字节，SHA-256 `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`；GitHub Release：`https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`）。如希望测试上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义目录。
 >
-> **单文件 `LKEX v1` 扩展支持**：`scripts/build_lokeypack.py` 支持全词表 `32,768` 神经词向量、`1,650` 对高难同音词消歧（`data/commit-deltas.tsv`）与多字上下文联想（`data/conversational-assoc-v2.tsv`），并在 `data/` 包含 `lokey_lnlm_bwd.bin`（`LNBR-v2`）、`lokey_lntr.bin`（`LNTR-v1`）或 `lokey_lnlm_sem64.bin`（`LNS6-v1`）时自动将其以零拷贝 `LKEX v1` 扩展段内嵌进**单个** `rime-frost.lokeypack` 中，兼容 iOS「文件」App 与隔空投送单文件导入，且与旧版客户端双向兼容。
+> **单文件 `LKEX v1` 扩展支持**：`scripts/build_lokeypack.py` 支持全词表 `32,768` 神经词向量、`1,600` 对高难同音词消歧（`data/commit-deltas.tsv`）与多字上下文联想（`data/conversational-assoc-v2.tsv`），并在 `data/` 包含 `lokey_lnlm_bwd.bin`（`LNBR-v2`）、`lokey_lntr.bin`（`LNTR-v1`）或 `lokey_lnlm_sem64.bin`（`LNS6-v1`）时自动将其以零拷贝 `LKEX v1` 扩展段内嵌进**单个** `rime-frost.lokeypack` 中，兼容 iOS「文件」App 与隔空投送单文件导入，且与旧版客户端双向兼容。
 
 ### 6. 开源许可与致谢
 
@@ -83,7 +83,7 @@ python3 scripts/build_lokeypack.py
 ### 1. Pack Overview
 
 - **Binary Format**: `LKLF-v2` + embedded `LNLM-v2` (32-dim SIMD neural sentence scorer) + single-file zero-copy `LKEX v1` extension section (embedding `LNBR-v2` backward sentence-initial reranker, `LNTR-v1` blind-typing typo reranker, and `LNS6-v1` 64-dim semantic topic memory) + `EOF-16` trailer (`rime-frost.lokeypack` only; does not bundle `lokey_emoji.bin` or `lokey_opencc.bin`; backward-compatible with older clients).
-- **`v0.9.5` Lexicon & Model Contents**: Compiled from pinned `gaboolic/rime-frost` commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`), totaling `46,340,296` bytes (`44.19 MB`): `425` syllables, `553,351` Chinese word entries, `80,443` Jianpin entries, `21,313` English/CN-EN entries, `396,498` association and ranking edges (covering bigram/multi-word context associations and `1,650` homophone disambiguation pairs), `32,768` neural word vectors, `7,863` neural character vectors, plus single-file embedded `LNBR-v2` (`79,317 B`), `LNTR-v1` (`46,768 B`), and `LNS6-v1` (`5,762,232 B`).
+- **`v0.9.5` Lexicon & Model Contents**: Compiled from pinned `gaboolic/rime-frost` commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`), totaling `46,477,184` bytes (`44.32 MB`): `425` syllables, `553,352` Chinese word entries, `80,443` Jianpin entries, `21,313` English/CN-EN entries, `396,980` association and ranking edges (covering bigram/multi-word context associations and `1,600` homophone disambiguation pairs), `32,768` neural word vectors, `7,863` neural character vectors, plus single-file embedded `LNBR-v2` (`200,566 B`), `LNTR-v1` (`46,768 B`), and `LNS6-v1` (`5,762,320 B`).
 - **Zero-Copy Single-File `mmap` Mounting**: Mounted read-only in Lokey via `NSData(contentsOf:options: [.mappedIfSafe])` with zero heap copy overhead, activating full lexicon lookup, sentence reranking, blind-typing typo correction, and semantic topic memory from a single `.lokeypack` file.
 
 ### 2. Zero-Network Guarantee & GPL-3.0 Separation
@@ -133,7 +133,7 @@ python3 scripts/build_lokeypack.py
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` deterministically reproduces the `v0.9.5` release (`46,340,296` bytes, SHA-256 `ce47aebb90365d1811d356890847bef5450e0c3f6088c558d54a03cd5d97130b`; `https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`). To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
+> Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` deterministically reproduces the `v0.9.5` release (`46,477,184` bytes, SHA-256 `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`; `https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`). To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
 
 ### 6. License & Attributions
 
