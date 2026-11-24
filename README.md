@@ -1,6 +1,6 @@
 # lokey-frost-pack
 
-[中文](#中文说明) | [English](#english)
+[中文说明](#中文说明) | [English](#english)
 
 ---
 
@@ -8,69 +8,67 @@
 
 ## 中文说明
 
-`lokey-frost-pack` 是为 **Lokey（`Kianuni/Lokey`）** iOS 26 键全拼与小鹤/自然码双拼输入法提供的**纯离线 `GPL-3.0` 外部词库包与独立编译器仓库**。
+`lokey-frost-pack` 是面向 **Lokey** iOS 26 键全拼与小鹤/自然码双拼输入法提供的**纯离线外部词库包与独立开源编译器仓库**。
 
-### 1. 词库包概览
+### 1. 项目定位与上游关系
 
-- **二进制格式**：`LKLF-v2` + 内嵌 `LNLM-v2`（32 维 SIMD 神经整句打分）+ 单文件零拷贝 `LKEX v1` 扩展段（内嵌 `LNBR-v2` 逆向句首重排、`LNTR-v1` 盲打纠错重排与 `LNS6-v1` 64 维语义话题记忆）+ `EOF-16` 尾部校验结构（仅含词库与语言模型，不含表情符号或 OpenCC 二进制，且向下兼容旧版客户端）。
-- **`v0.9.5` 词库与模型内容**：基于 `gaboolic/rime-frost` 固定提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）编译，总大小 `46,477,184` 字节（`44.32 MB`），包含 `425` 个音节、`553,352` 条中文词条、`80,443` 条简拼索引、`21,313` 条英文及中英混输词条、`396,980` 条联想与排序边（覆盖双字与多字上下文联想及 `1,600` 对高难同音词消歧）、`32,768` 个神经词向量、`7,863` 个神经字向量，以及单文件内嵌的 `LNBR-v2`（`200,566` 字节）、`LNTR-v1`（`46,768` 字节）与 `LNS6-v1`（`5,762,320` 字节）。
-- **单文件零拷贝挂载**：导入单个 `rime-frost.lokeypack` 后由 Lokey 通过 `NSData(contentsOf:options: [.mappedIfSafe])` 以只读 `mmap` 方式直接热挂载，即刻启用完整的词库、整句重排、盲打纠错与上下文话题记忆能力，无堆内存拷贝开销。
+- **词典底座（致敬开源上游）**：本项目的中文词汇表、多音字注音与基础词频底座源自开源项目 [`gaboolic/rime-frost`](https://github.com/gaboolic/rime-frost)（白霜词库，承袭雾凇拼音体系），固定基线提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`）。白霜词库提供了扎实的现代汉语词表覆盖、字音校勘与基础词频，特此向上游作者与社区贡献者致谢。
+- **移动端零拷贝与端侧神经层（本仓核心工作）**：针对**手机触屏无键程 26 键快打易误触**与 **iOS 键盘扩展严苛内存上限**两大移动端痛点，`lokey-frost-pack` 并非简单的词表格式转码，而是在白霜词表底座之上离线构建了单文件零拷贝二进制索引与四层端侧轻量神经模型：
+  1. **44.32 MB 单文件零内存拷贝挂载（`LKLF-v2` + `mmap`）**：无需将词典解压或读入堆内存，直接以只读内存映射（`NSData(options: [.mappedIfSafe])`）热挂载 `553,352` 条中文词条、`80,443` 条简拼索引与 `21,313` 条英文/中英混输词条，兼顾大词量与键盘毫秒级冷启动。
+  2. **前向 + 逆向双向整句消歧（`LNLM-v2` + `LNBR-v2`）**：内置 `32,768` 个 32 维神经词向量、`7,863` 个神经字向量、`396,980` 条上下文搭配与排序边（覆盖双字/多字语境衔接及 `1,600` 组高频易混同音词专项消歧），配合逆向句首重排模型，显著降低长句输入“句首同音词选错”导致的返工。
+  3. **26 键触屏盲打纠错重排（`LNTR-v1`）**：针对手机小屏拇指快打常见的邻键误触（如 `g/h`、`i/o`、`n/m`），在多条近似拼音路径间结合整句语义通顺度重排，提升盲打容错率。
+  4. **64 维跨句语义话题记忆（`LNS6-v1`）**：基于纯本机滑动窗口维护上下文语义向量，上文出现特定领域词汇后，后续简短同音拼音自动向当前话题语境倾斜。
 
-### 2. 物理零联网与 GPL-3.0 商业隔离说明
+### 2. 开源发布与客户端隔离边界
 
-- **主应用合规隔离**：商业版 `Kianuni/Lokey` 内置 100% 无 GPL 传染性数据的宽松许可基础词库，且二进制与源码中不包含任何网络框架或 Socket 符号（可通过 [`Kianuni/Lokey-Audit`](https://github.com/Kianuni/Lokey-Audit) 独立审计验证）。
-- **被动静态数据包**：`Kianuni/lokey-frost-pack` 为独立的 `GPL-3.0` 开源仓库。`.lokeypack` 是纯粹的被动只读静态数据文件，**Lokey 主应用与键盘扩展永远不会联网下载或拉取任何词库**。用户可在本地自愿选择下载或离线编译 `.lokeypack` 后手动导入 Lokey；Lokey 在本地验证魔数、版本号、各段边界、`LNLM-v2` 尾部与 SHA-256 校验和后，原子安装至本地 `App Group` 沙盒中通过 `mmap` 挂载。
+- **成品包与编译器 100% 免费公开**：预编译 `rime-frost.lokeypack` 在本仓库 GitHub Releases 直接免费提供下载；构建脚本仅依赖 `git` 与 Python 3 标准库（零第三方依赖），任何人均可离线完整复现同一 SHA-256 产物，或自行指定上游提交重新编译。
+- **被动静态数据与主应用独立**：`.lokeypack` 是纯粹的被动只读静态数据文件，兼容单文件 `LKEX v1` 零拷贝扩展段与旧版客户端。**Lokey 主应用与键盘扩展内置独立的无 GPL 基础词库与完整神经引擎（不导入任何外部包即可正常使用全部输入方案），且物理级零联网（0 网络框架 / 0 Socket 符号，见 [`Kianuni/Lokey-Audit`](https://github.com/Kianuni/Lokey-Audit)），永远不会联网拉取词库**；有更大词量需求的用户可自愿下载 `.lokeypack` 文件后在本地手动导入。
 
-### 3. 下载与 SHA-256 校验
+### 3. 技术规格与 SHA-256 校验
 
-从 GitHub Releases 下载 `rime-frost.lokeypack` 与 `rime-frost.lokeypack.sha256` 至同一目录后，在终端执行校验：
+- **二进制结构**：`LKLF-v2` 主词库段 + `LNLM-v2`（32 维 SIMD 前向神经打分段）+ `LKEX v1` 单文件扩展段（内嵌 `LNBR-v2` `200,566 B`、`LNTR-v1` `46,768 B`、`LNS6-v1` `5,762,320 B`）+ `EOF-16` 尾部校验（不含表情或简繁转换表）。
+- **当前发布版本**：`v0.9.5`（兼容 Lokey `1.0` 及后续版本）
+- **文件大小**：`46,477,184` 字节（`44.32 MB`）
+- **SHA-256**：`de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`
+
+从 [GitHub Releases](https://github.com/Kianuni/lokey-frost-pack/releases/latest) 下载 `rime-frost.lokeypack` 与 `rime-frost.lokeypack.sha256` 至同一目录后，可在终端核验完整性：
 
 ```bash
-# 在下载目录中直接校验（或本地构建后在 dist/ 目录中执行）
 shasum -a 256 -c rime-frost.lokeypack.sha256
 # 预期输出: rime-frost.lokeypack: OK
 ```
 
-本地从源码编译后校验：
-
-```bash
-(cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
-```
-
 ### 4. iOS 导入与热挂载指南
 
-1. **方式一：通过「文件」App 导入（Files Picker，`asCopy: true`）**
-   - 将已校验的 `rime-frost.lokeypack` 保存至 iPhone 的「文件」App（iCloud 云盘或「我的 iPhone」）。
-   - 打开 **Lokey** 主应用 → 进入 **基础词库管理（Base-Lexicon Manager）** → 点击导入按钮并在「文件」选择器中选中 `rime-frost.lokeypack`。
-2. **方式二：隔空投送（AirDrop）或「用 Lokey 打开」（`"Open In Lokey"`）**
-   - 从 Mac 通过 AirDrop 发送 `rime-frost.lokeypack` 至 iPhone，或在 iPhone「文件」App 中长按/点击分享该文件，选择 **「用 Lokey 打开」**。
-3. **查看元数据与一键切回内置词库**
-   - 导入后可在 Lokey 内查看当前挂载词库的词条数、音节数、来源说明与 SHA-256 摘要。
-   - 如需恢复商业版内置宽松许可词库，可在词库管理页面**一键切换回内置词库**，或随时删除已导入的外部 `.lokeypack` 包。
+1. **方式一：通过「文件」App 选择导入**
+   - 将 `rime-frost.lokeypack` 保存至 iPhone「文件」App（iCloud 云盘或「我的 iPhone」）。
+   - 打开 **Lokey → 词库数据 → 导入外部 `.lokeypack` 词库包**（或进入「管理基础词库与已安装包」），选中该文件完成本机校验与安装。
+2. **方式二：隔空投送（AirDrop）或「用 Lokey 打开」**
+   - 从 Mac 通过 AirDrop 发送 `rime-frost.lokeypack` 至 iPhone，或在「文件」App 中长按该文件点击**分享 → 用 Lokey 打开**。
+3. **状态核验与一键切回内置词库**
+   - 挂载后可在「词库数据」页查看词条规模、音节数、来源与 SHA-256 摘要；随时可**一键切换回内置纯净基础词库**或左滑删除外部词库包。
 
-### 5. 纯离线从源码构建
+### 5. 纯离线从源码复现构建
 
-本仓库构建过程**完全独立**，不依赖 `Kianuni/Lokey` 仓库，仅需 `git` 与 Python 3 标准库（无需 `pip` 安装任何第三方依赖）：
+本仓库构建过程完全独立，仅需 `git` 与 Python 3 标准库：
 
 ```bash
 # 1. 拉取固定基线提交的 gaboolic/rime-frost（默认 commit: 7c8a908a92fa67fe1be9279b523b3cf95366e27d）
 ./scripts/fetch_rime_frost.sh
 
-# 2. 纯离线编译 dist/rime-frost.lokeypack 与 dist/rime-frost.lokeypack.sha256
-python3 scripts/build_lokeypack.py
+# 2. 纯离线确定性编译 dist/rime-frost.lokeypack 与 dist/rime-frost.lokeypack.sha256
+PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py
 
 # 3. 验证 SHA-256 校验和
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> 说明：默认固定拉取 `gaboolic/rime-frost` 提交 `7c8a908a92fa67fe1be9279b523b3cf95366e27d`（`2026-11-09`），使用 `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` 可 100% 确定性复现 `v0.9.5` 发布版（`46,477,184` 字节，SHA-256 `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`；GitHub Release：`https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`）。如希望测试上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义目录。
->
-> **单文件 `LKEX v1` 扩展支持**：`scripts/build_lokeypack.py` 支持全词表 `32,768` 神经词向量、`1,600` 对高难同音词消歧（`data/commit-deltas.tsv`）与多字上下文联想（`data/conversational-assoc-v2.tsv`），并在 `data/` 包含 `lokey_lnlm_bwd.bin`（`LNBR-v2`）、`lokey_lntr.bin`（`LNTR-v1`）或 `lokey_lnlm_sem64.bin`（`LNS6-v1`）时自动将其以零拷贝 `LKEX v1` 扩展段内嵌进**单个** `rime-frost.lokeypack` 中，兼容 iOS「文件」App 与隔空投送单文件导入，且与旧版客户端双向兼容。
+> 如需跟踪上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义词库目录重新编译。
 
-### 6. 开源许可声明
+### 6. 开源许可证与合规声明
 
-- 仓库整体及编译产物遵循 **GPL-3.0**（见 `LICENSE`）。
-- 第三方数据与权重许可声明见 `THIRD_PARTY_NOTICES.md` 与 `LICENSES/`。
+- 本仓库源码与编译产物遵循 `LICENSE` 所载开源许可证条款。
+- 上游词典、语料及模型组件的详细许可证与归属声明见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) 与 [`LICENSES/`](./LICENSES/)。
 
 ---
 
@@ -78,64 +76,56 @@ python3 scripts/build_lokeypack.py
 
 ## English
 
-`lokey-frost-pack` is a standalone, offline **`GPL-3.0`** `.lokeypack` lexicon pack and compiler repository for the **Lokey (`Kianuni/Lokey`)** iOS 26-key Full-Pinyin & Xiaohe/Ziranma Shuangpin keyboard.
+`lokey-frost-pack` is a standalone, offline `.lokeypack` external lexicon pack and open-source compiler repository for the **Lokey** iOS 26-key Full-Pinyin & Xiaohe/Ziranma Shuangpin keyboard.
 
-### 1. Pack Overview
+### 1. Relationship with Upstream `rime-frost` & Mobile Enhancements
 
-- **Binary Format**: `LKLF-v2` + embedded `LNLM-v2` (32-dim SIMD neural sentence scorer) + single-file zero-copy `LKEX v1` extension section (embedding `LNBR-v2` backward sentence-initial reranker, `LNTR-v1` blind-typing typo reranker, and `LNS6-v1` 64-dim semantic topic memory) + `EOF-16` trailer (`rime-frost.lokeypack` only; does not bundle `lokey_emoji.bin` or `lokey_opencc.bin`; backward-compatible with older clients).
-- **`v0.9.5` Lexicon & Model Contents**: Compiled from pinned `gaboolic/rime-frost` commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`), totaling `46,477,184` bytes (`44.32 MB`): `425` syllables, `553,352` Chinese word entries, `80,443` Jianpin entries, `21,313` English/CN-EN entries, `396,980` association and ranking edges (covering bigram/multi-word context associations and `1,600` homophone disambiguation pairs), `32,768` neural word vectors, `7,863` neural character vectors, plus single-file embedded `LNBR-v2` (`200,566 B`), `LNTR-v1` (`46,768 B`), and `LNS6-v1` (`5,762,320 B`).
-- **Zero-Copy Single-File `mmap` Mounting**: Mounted read-only in Lokey via `NSData(contentsOf:options: [.mappedIfSafe])` with zero heap copy overhead, activating full lexicon lookup, sentence reranking, blind-typing typo correction, and semantic topic memory from a single `.lokeypack` file.
+- **Dictionary Foundation (Upstream Credit)**: The Chinese vocabulary, polyphone readings, and baseline word frequencies originate from [`gaboolic/rime-frost`](https://github.com/gaboolic/rime-frost) (pinned at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d`, `2026-11-09`), building upon the Rime Ice ecosystem. We gratefully acknowledge the upstream maintainers and contributors for their meticulous dictionary curation.
+- **Zero-Copy Indexing & On-Device Neural Reranking (What This Repo Adds)**: Rather than a plain YAML-to-binary format conversion, `lokey-frost-pack` addresses two mobile-specific constraints—**eyes-free 26-key touchscreen thumb typing** and **strict iOS keyboard extension memory limits**—by compiling four on-device capabilities into a single memory-mapped file:
+  1. **44.32 MB Single-File Zero-Copy `mmap` (`LKLF-v2`)**: Mounts `553,352` Chinese words, `80,443` Jianpin entries, and `21,313` English/CN-EN mixed entries via read-only `NSData(options: [.mappedIfSafe])` with zero heap copy overhead.
+  2. **Forward + Backward Neural Sentence Disambiguation (`LNLM-v2` + `LNBR-v2`)**: Combines `32,768` 32-dim word vectors, `7,863` character vectors, `396,980` contextual association/ranking edges (including `1,600` targeted homophone disambiguation pairs), and a backward sentence-initial reranker to prevent early homophone misselections in long sentences.
+  3. **26-Key Blind-Typing Typo Reranker (`LNTR-v1`)**: Re-scores competing adjacent-key typo hypotheses by full-sentence fluency during fast mobile thumb typing.
+  4. **64-Dim Cross-Sentence Semantic Topic Memory (`LNS6-v1`)**: Maintains an on-device sliding semantic vector so short ambiguous Pinyin inputs naturally adapt to the active conversation topic.
 
-### 2. Zero-Network Guarantee & GPL-3.0 Separation
+### 2. Free Open-Source Distribution & Client Separation
 
-- **Commercial Separation**: `Kianuni/Lokey` ships with a 100% GPL-free permissive built-in base lexicon and contains zero networking frameworks or socket symbols (independently verifiable in `Kianuni/Lokey-Audit`).
-- **Passive Static Data File**: `Kianuni/lokey-frost-pack` is a separate `GPL-3.0` repository. `.lokeypack` is a passive read-only binary data file; `Lokey` never fetches or downloads packs over the network. Users explicitly import a local `.lokeypack` file into `Lokey`, which validates magic bytes, version, section bounds, `LNLM-v2` trailer bounds, and SHA-256 before atomically installing it into the local `App Group` sandbox for `mmap` mounting.
+- **100% Free & Reproducible**: Prebuilt `rime-frost.lokeypack` binaries are freely available on GitHub Releases, and the compiler uses only `git` and Python 3's standard library (zero third-party `pip` dependencies) for bit-for-bit reproducible offline builds.
+- **Passive Data & Independent Host App**: `.lokeypack` is a passive, read-only static binary file. **Lokey** ships with its own independent built-in base lexicon and neural engine (fully functional out of the box without any external pack) and is physically air-gapped with zero networking frameworks or socket symbols (auditable in [`Kianuni/Lokey-Audit`](https://github.com/Kianuni/Lokey-Audit)). Lokey never downloads dictionaries over the network; users optionally download and import `.lokeypack` files locally.
 
-### 3. Download & SHA-256 Verification
+### 3. Specifications & SHA-256 Checksum
 
-Download `rime-frost.lokeypack` and `rime-frost.lokeypack.sha256` from GitHub Releases into the same directory, then verify:
+- **Binary Layout**: `LKLF-v2` base lexicon + `LNLM-v2` (32-dim SIMD forward scorer) + `LKEX v1` single-file extension (`LNBR-v2` `200,566 B`, `LNTR-v1` `46,768 B`, `LNS6-v1` `5,762,320 B`) + `EOF-16` trailer (backward-compatible with older clients; excludes Emoji/OpenCC assets).
+- **Release**: `v0.9.5` (compatible with Lokey `1.0`+)
+- **Size**: `46,477,184` bytes (`44.32 MB`)
+- **SHA-256**: `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`
 
 ```bash
-# Inside the download folder:
 shasum -a 256 -c rime-frost.lokeypack.sha256
 # Expected: rime-frost.lokeypack: OK
 ```
 
-After a local build from source:
-
-```bash
-(cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
-```
-
 ### 4. iOS Import Guide
 
-1. **Method A — Files Picker (`asCopy: true`)**
-   - Save `rime-frost.lokeypack` to the iOS **Files** app.
-   - Open **Lokey** → **Base-Lexicon Manager** → tap **Import** and select `rime-frost.lokeypack` from the Files picker.
-2. **Method B — AirDrop / `"Open In Lokey"`**
-   - AirDrop `rime-frost.lokeypack` from Mac to iPhone, or tap Share → **Open In Lokey** from the Files app.
-3. **Metadata Inspection & One-Tap Rollback**
-   - Inspect the mounted lexicon's word count, syllable count, source, and SHA-256 digest inside Lokey.
-   - Switch back to the built-in GPL-free permissive lexicon with one tap, or delete the external `.lokeypack` at any time.
+1. **Files App Picker**: Save `rime-frost.lokeypack` to the iOS **Files** app, then open **Lokey → Lexicon Data → Import External `.lokeypack`** (or **Manage Base Lexicon & Installed Packs**).
+2. **AirDrop / Open In**: AirDrop `rime-frost.lokeypack` from Mac to iPhone, or tap **Share → Open in Lokey** inside the Files app.
+3. **One-Tap Rollback**: View word count, syllable count, and SHA-256 digest in **Lexicon Data**, switch back to the built-in lexicon in one tap, or swipe to delete external packs at any time.
 
-### 5. Offline Build from Source
-
-Building requires **zero** dependency on `Kianuni/Lokey`, using only `git` and Python 3's standard library (no third-party `pip` packages):
+### 5. Reproducible Offline Build from Source
 
 ```bash
 # 1. Fetch pinned gaboolic/rime-frost (default commit: 7c8a908a92fa67fe1be9279b523b3cf95366e27d)
 ./scripts/fetch_rime_frost.sh
 
-# 2. Compile dist/rime-frost.lokeypack and dist/rime-frost.lokeypack.sha256 offline
-python3 scripts/build_lokeypack.py
+# 2. Deterministically compile dist/rime-frost.lokeypack and dist/rime-frost.lokeypack.sha256
+PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py
 
 # 3. Verify SHA-256 checksum
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> Pinning `gaboolic/rime-frost` at commit `7c8a908a92fa67fe1be9279b523b3cf95366e27d` (`2026-11-09`) with `PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py` deterministically reproduces the `v0.9.5` release (`46,477,184` bytes, SHA-256 `de32f3c0e561026752e56392c2cd5cdd912a73424da2ff9b9fae80d04d4ee348`; `https://github.com/Kianuni/lokey-frost-pack/releases/tag/v0.9.5`). To compile a different snapshot or local checkout, override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>`.
+> Override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>` to compile against a custom upstream snapshot.
 
-### 6. License
+### 6. License & Notices
 
-- **License**: `GPL-3.0` (`LICENSE`).
-- **Third-Party Notices**: See `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
+- Repository source code and compiled artifacts are governed by [`LICENSE`](./LICENSE).
+- Detailed upstream dictionary, corpus, and component attributions are documented in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) and [`LICENSES/`](./LICENSES/).
