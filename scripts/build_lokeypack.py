@@ -562,6 +562,29 @@ def parse_rime_dict(path: Path):
             yield text, code, weight
 
 
+def parse_extra_dict(path: Path):
+    """Parse either a standard Rime `.dict.yaml` (after `...`) or a headerless TSV (`word<Tab>pin yin[<Tab>weight]`)."""
+    lines = path.read_text(encoding="utf-8-sig", errors="ignore").splitlines()
+    has_yaml_terminator = any(raw.strip() == "..." for raw in lines)
+    in_body = not has_yaml_terminator
+    for raw in lines:
+        line = raw.strip()
+        if not in_body:
+            if line == "...":
+                in_body = True
+            continue
+        if not line or line.startswith("#") or "\t" not in line:
+            continue
+        parts = line.split("\t")
+        text = parts[0].strip()
+        code = parts[1].strip() if len(parts) > 1 else ""
+        if not text or not code:
+            continue
+        w_str = parts[2].strip().rstrip("%") if len(parts) > 2 else ""
+        weight = float(w_str) if w_str.replace(".", "", 1).isdigit() else 0.0
+        yield text, code, weight
+
+
 def pack_code_be(ascii_str: str) -> int:
     raw = ascii_str.encode("ascii")[:8]
     raw = raw + b"\x00" * (8 - len(raw))
@@ -961,6 +984,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional path to write JSON build manifest (omitted by default)",
     )
+    parser.add_argument(
+        "--extra-dict",
+        type=Path,
+        action="append",
+        default=[],
+        help="Optional custom Rime .dict.yaml or tab-separated lexicon file to merge (repeatable)",
+    )
     parser.add_argument("--bwd-bin", type=Path, default=None, help="Optional LNBR v2 binary to embed in LKEX trailer")
     parser.add_argument("--lntr-bin", type=Path, default=None, help="Optional LNTR v1 binary to embed in LKEX trailer")
     parser.add_argument("--sem64-bin", type=Path, default=None, help="Optional LNS6 v1 binary to embed in LKEX trailer")
@@ -983,6 +1013,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    for extra_path in args.extra_dict:
+        if not extra_path.is_file():
+            print(f"Error: Extra dictionary file not found: {extra_path}", file=sys.stderr)
+            return 1
 
     for req_file in (
         "mandarin-counts.tsv",
@@ -1250,6 +1285,26 @@ def main(argv: list[str] | None = None) -> int:
                 cn_entries[key] = eff_w
             for s in syls:
                 syllable_set.add(s)
+
+    if args.extra_dict:
+        extra_loaded = 0
+        for extra_path in args.extra_dict:
+            for text, code, weight in parse_extra_dict(extra_path):
+                if not (1 <= len(text) <= 8):
+                    continue
+                syls = tuple(code.lower().replace("ü", "v").split())
+                if not (1 <= len(syls) <= 8):
+                    continue
+                if not all(SYLLABLE_RE.match(s) and s not in INVALID_NON_MANDARIN_SYLLABLES for s in syls):
+                    continue
+                eff_w = weight if weight > 0.0 else 120.0
+                key = (text, syls)
+                if eff_w > cn_entries.get(key, 0.0):
+                    cn_entries[key] = eff_w
+                for s in syls:
+                    syllable_set.add(s)
+                extra_loaded += 1
+        print(f"    Merged {extra_loaded:,} custom entries from {len(args.extra_dict)} --extra-dict file(s).")
 
     # 1B-post. Apply `others/错字词.txt` orthographic transfer (`模版 -> 模板`, `记帐 -> 记账`, `转帐 -> 转账`,
     #          `手动档 -> 手动挡`, `优惠卷 -> 优惠券`, `按耐不住 -> 按捺不住`, `曾今 -> 曾经`, `魔蝎座 -> 摩羯座`):

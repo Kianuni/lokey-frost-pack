@@ -48,22 +48,37 @@ shasum -a 256 -c rime-frost.lokeypack.sha256
 3. **状态核验与一键切回内置词库**
    - 挂载后可在「词库数据」页查看词条规模、音节数、来源与 SHA-256 摘要；随时可**一键切换回内置纯净基础词库**或左滑删除外部词库包。
 
-### 5. 纯离线从源码复现构建
+### 5. 纯离线自行编译与定制 `.lokeypack`
 
-本仓库构建过程完全独立，仅需 `git` 与 Python 3 标准库：
+本仓库构建过程完全独立，仅需 `git` 与 Python 3 标准库（无需安装任何第三方 `pip` 依赖），Lokey 客户端不绑定官方签名，任何按格式编译的 `.lokeypack` 均可直接导入并多包共存切换：
 
+#### 场景 A：确定性复现发布版 `rime-frost.lokeypack`
 ```bash
 # 1. 拉取固定基线提交的 gaboolic/rime-frost（默认 commit: 7c8a908a92fa67fe1be9279b523b3cf95366e27d）
 ./scripts/fetch_rime_frost.sh
 
-# 2. 纯离线确定性编译 dist/rime-frost.lokeypack 与 dist/rime-frost.lokeypack.sha256
+# 2. 纯离线编译 dist/rime-frost.lokeypack 与 dist/rime-frost.lokeypack.sha256
 PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py
 
-# 3. 验证 SHA-256 校验和
+# 3. 核验 SHA-256 校验和
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
 ```
 
-> 如需跟踪上游更新词条，可通过 `RIME_FROST_COMMIT=<commit> ./scripts/fetch_rime_frost.sh` 或 `--rime-frost-dir <path>` 指定自定义词库目录重新编译。
+#### 场景 B：同步上游最新词条重新打包
+```bash
+RIME_FROST_COMMIT=main ./scripts/fetch_rime_frost.sh
+python3 scripts/build_lokeypack.py -o dist/frost-latest.lokeypack
+```
+
+#### 场景 C：混入个人或行业专属词表（`--extra-dict`）
+支持传入一个或多个标准 Rime `.dict.yaml` 文件，或纯制表符分隔文本（每行 `词条<Tab>quan pin` 或 `词条<Tab>quan pin<Tab>权重`，支持 1–8 字词条，`ü` 可写为 `v`）：
+```bash
+python3 scripts/build_lokeypack.py \
+  --extra-dict my_domain.dict.yaml \
+  --extra-dict custom_terms.txt \
+  -o dist/my-custom.lokeypack
+```
+生成后通过 AirDrop 或「文件」App 导入 iPhone，即可在「基础词库管理」中随时挂载切换。
 
 ### 6. 开源许可证与合规声明
 
@@ -110,20 +125,27 @@ shasum -a 256 -c rime-frost.lokeypack.sha256
 2. **AirDrop / Open In**: AirDrop `rime-frost.lokeypack` from Mac to iPhone, or tap **Share → Open in Lokey** inside the Files app.
 3. **One-Tap Rollback**: View word count, syllable count, and SHA-256 digest in **Lexicon Data**, switch back to the built-in lexicon in one tap, or swipe to delete external packs at any time.
 
-### 5. Reproducible Offline Build from Source
+### 5. Offline Self-Compilation & Custom `.lokeypack` Builds
+
+Building requires only `git` and Python 3's standard library (zero third-party `pip` packages). Lokey enforces structural bounds checking without locking packs to official signatures, so custom-built `.lokeypack` files can be imported and switched freely:
 
 ```bash
-# 1. Fetch pinned gaboolic/rime-frost (default commit: 7c8a908a92fa67fe1be9279b523b3cf95366e27d)
+# Scenario A: Deterministically reproduce the release rime-frost.lokeypack
 ./scripts/fetch_rime_frost.sh
-
-# 2. Deterministically compile dist/rime-frost.lokeypack and dist/rime-frost.lokeypack.sha256
 PYTHONHASHSEED=0 python3 scripts/build_lokeypack.py
-
-# 3. Verify SHA-256 checksum
 (cd dist && shasum -a 256 -c rime-frost.lokeypack.sha256)
+
+# Scenario B: Track the latest upstream rime-frost entries
+RIME_FROST_COMMIT=main ./scripts/fetch_rime_frost.sh
+python3 scripts/build_lokeypack.py -o dist/frost-latest.lokeypack
+
+# Scenario C: Merge your own Rime .dict.yaml or TSV wordlists (`word<Tab>pin yin[<Tab>weight]`)
+python3 scripts/build_lokeypack.py \
+  --extra-dict my_domain.dict.yaml \
+  -o dist/my-custom.lokeypack
 ```
 
-> Override `RIME_FROST_COMMIT` or pass `--rime-frost-dir <path>` to compile against a custom upstream snapshot.
+> Pass `--rime-frost-dir <path>` to compile against any local Rime dictionary directory checkout.
 
 ### 6. License & Notices
 
