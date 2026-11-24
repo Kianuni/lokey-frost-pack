@@ -61,10 +61,16 @@ done
 
 mkdir -p "$(dirname "$VENDOR_DIR")"
 
+IS_EXACT_SHA=0
+if [[ "$RIME_FROST_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  IS_EXACT_SHA=1
+  EXPECTED_SHA="$(printf '%s' "$RIME_FROST_COMMIT" | tr '[:upper:]' '[:lower:]')"
+fi
+
 if [[ -d "$VENDOR_DIR/.git" ]]; then
   CURRENT_HEAD="$(git -C "$VENDOR_DIR" rev-parse HEAD 2>/dev/null || true)"
-  if [[ "$CURRENT_HEAD" == "$RIME_FROST_COMMIT" ]]; then
-    echo "==> rime-frost already at pinned commit $RIME_FROST_COMMIT"
+  if [[ "$IS_EXACT_SHA" -eq 1 && "$CURRENT_HEAD" == "$EXPECTED_SHA" ]]; then
+    echo "==> rime-frost already at pinned commit $EXPECTED_SHA"
   else
     echo "==> Updating existing checkout at $VENDOR_DIR to $RIME_FROST_COMMIT..."
     if ! git -C "$VENDOR_DIR" fetch --depth 1 origin "$RIME_FROST_COMMIT"; then
@@ -84,7 +90,7 @@ else
   if git -C "$VENDOR_DIR" fetch --depth 1 origin "$RIME_FROST_COMMIT"; then
     git -C "$VENDOR_DIR" checkout --detach FETCH_HEAD
   else
-    echo "==> Shallow SHA fetch rejected by remote; falling back to full clone..."
+    echo "==> Shallow fetch rejected by remote; falling back to full clone..."
     rm -rf "$VENDOR_DIR"
     git clone "$RIME_FROST_URL" "$VENDOR_DIR"
     git -C "$VENDOR_DIR" checkout --detach "$RIME_FROST_COMMIT"
@@ -92,8 +98,8 @@ else
 fi
 
 HEAD_SHA="$(git -C "$VENDOR_DIR" rev-parse HEAD)"
-if [[ "$HEAD_SHA" != "$RIME_FROST_COMMIT" ]]; then
-  echo "Error: Expected HEAD $RIME_FROST_COMMIT, got $HEAD_SHA" >&2
+if [[ "$IS_EXACT_SHA" -eq 1 && "$HEAD_SHA" != "$EXPECTED_SHA" ]]; then
+  echo "Error: Expected HEAD $EXPECTED_SHA, got $HEAD_SHA" >&2
   exit 1
 fi
 

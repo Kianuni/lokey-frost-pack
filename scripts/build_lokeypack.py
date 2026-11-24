@@ -641,7 +641,11 @@ def counted_object_phrases(frost_dir):
                 "喝泡倒端添", "吃点煮炒", "穿换脱洗", "写读印填签", "开骑坐叫",
                 "装搬铺挂", "拍印发", "摘挑买", "种插摘")
     counted, observed = {}, defaultdict(dict)
-    with (frost_dir / "others" / "3字统计结果.txt").open(encoding="utf-8-sig") as source:
+    trigram_src = frost_dir / "others" / "3字统计结果.txt"
+    zhihu_src = frost_dir / "others" / "zhihu_deal_sort_merge.txt"
+    if not trigram_src.exists() or not zhihu_src.exists():
+        return
+    with trigram_src.open(encoding="utf-8-sig") as source:
         for line in source:
             term, _, raw = line.rstrip().partition("\t")
             if len(term) != 3 or term[1] not in classifiers or term[2] not in nouns or not raw.isdecimal():
@@ -651,7 +655,7 @@ def counted_object_phrases(frost_dir):
             elif term[0] in verbs:
                 observed[term[1:]][term[0]] = int(raw)
 
-    with (frost_dir / "others" / "zhihu_deal_sort_merge.txt").open(encoding="utf-8-sig") as source:
+    with zhihu_src.open(encoding="utf-8-sig") as source:
         objects = defaultdict(dict)
         for line in source:
             term, _, raw = line.rstrip().partition("\t")
@@ -706,22 +710,24 @@ def mixed_phrase_index(entries, frost_dir, norm_z, data_dir: Path):
 
     # Compound paths observed in the pinned corpus, using the most frequent
     # dictionary segmentation and canonical reading for each component.
-    with (frost_dir / "others" / "zhihu_deal_sort_merge.txt").open(encoding="utf-8-sig") as f:
-        for row in f:
-            text, sep, count = row.rstrip().partition("\t")
-            if not sep or not count.isdecimal() or not 3 <= len(text) <= 8:
-                continue
-            weight = int(count)
-            if weight < 220:
-                continue
-            if text in readings:
-                record(text, readings[text][0], weight)
-                continue
-            splits = [(readings[text[:i]], readings[text[i:]]) for i in range(1, len(text))
-                      if text[:i] in readings and text[i:] in readings]
-            if splits:
-                left, right = max(splits, key=lambda pair: pair[0][1] * pair[1][1])
-                record(text, left[0] + right[0], weight)
+    zhihu_compound_path = frost_dir / "others" / "zhihu_deal_sort_merge.txt"
+    if zhihu_compound_path.exists():
+        with zhihu_compound_path.open(encoding="utf-8-sig") as f:
+            for row in f:
+                text, sep, count = row.rstrip().partition("\t")
+                if not sep or not count.isdecimal() or not 3 <= len(text) <= 8:
+                    continue
+                weight = int(count)
+                if weight < 220:
+                    continue
+                if text in readings:
+                    record(text, readings[text][0], weight)
+                    continue
+                splits = [(readings[text[:i]], readings[text[i:]]) for i in range(1, len(text))
+                          if text[:i] in readings and text[i:] in readings]
+                if splits:
+                    left, right = max(splits, key=lambda pair: pair[0][1] * pair[1][1])
+                    record(text, left[0] + right[0], weight)
 
     # Short spoken clauses often have no stand-alone dictionary entry. Infer
     # their readings from at most three attested words, with a lexical cost for
@@ -899,7 +905,10 @@ def short_homophone_cues(entries, frost_dir):
 
     counts = defaultdict(dict)
     for name in ("3字统计结果.txt", "zhihu_deal_sort_merge.txt"):
-        with (frost_dir / "others" / name).open(encoding="utf-8-sig") as source:
+        src_path = frost_dir / "others" / name
+        if not src_path.exists():
+            continue
+        with src_path.open(encoding="utf-8-sig") as source:
             for row in source:
                 term, sep, count = row.rstrip().partition("\t")
                 if not sep or not count.isdecimal() or not 3 <= len(term) <= 6:
@@ -1006,9 +1015,9 @@ def main(argv: list[str] | None = None) -> int:
         args.sha256_output if args.sha256_output is not None else Path(f"{output_path}.sha256")
     )
 
-    if not (frost_dir / "rime_frost.dict.yaml").exists():
+    if not (frost_dir / "rime_frost.dict.yaml").exists() and not (frost_dir / "cn_dicts").is_dir():
         print(
-            f"Error: rime-frost dictionary not found at {frost_dir}. "
+            f"Error: Rime dictionary directory not found at {frost_dir} (expected rime_frost.dict.yaml or cn_dicts/). "
             "Run ./scripts/fetch_rime_frost.sh first or pass --rime-frost-dir.",
             file=sys.stderr,
         )
@@ -1143,10 +1152,18 @@ def main(argv: list[str] | None = None) -> int:
     syllable_set: set[str] = set()
 
     tables_to_load: list[tuple[Path, float, bool]] = []
+    loaded_cn_paths: set[Path] = set()
     for rel, default_zero_w in CORE_CN_TABLES:
         p = frost_dir / rel
         if p.exists():
             tables_to_load.append((p, default_zero_w, True))
+            loaded_cn_paths.add(p.resolve())
+
+    if not (frost_dir / "rime_frost.dict.yaml").exists() and (frost_dir / "cn_dicts").is_dir():
+        for p in sorted((frost_dir / "cn_dicts").glob("*.dict.yaml")):
+            if p.resolve() not in loaded_cn_paths:
+                tables_to_load.append((p, 12.0, True))
+                loaded_cn_paths.add(p.resolve())
 
     cell_dir = frost_dir / "cn_dicts_cell"
     if cell_dir.exists():
@@ -1286,25 +1303,55 @@ def main(argv: list[str] | None = None) -> int:
             for s in syls:
                 syllable_set.add(s)
 
+    extra_en_entries: dict[str, tuple[str, int]] = {}
     if args.extra_dict:
-        extra_loaded = 0
+        valid_cn_syllables = set(syllable_set)
+        extra_cn_loaded = 0
+        extra_en_loaded = 0
+        extra_skipped = 0
         for extra_path in args.extra_dict:
             for text, code, weight in parse_extra_dict(extra_path):
+                norm_code = code.strip().lower().replace("u:", "v").replace("ü", "v")
+                # Support English / CN-EN mixed terms in --extra-dict (`OpenRouter\topenrouter`)
+                if (
+                    " " not in norm_code
+                    and 2 <= len(norm_code) <= 24
+                    and norm_code.isalpha()
+                    and (ASCII_WORD_RE.match(text) or ASCII_PHRASE_RE.match(text))
+                ):
+                    en_score = -1720 if weight >= 500.0 else -1820
+                    prev_en = extra_en_entries.get(norm_code)
+                    if prev_en is None or en_score >= prev_en[1]:
+                        extra_en_entries[norm_code] = (text, en_score)
+                    extra_en_loaded += 1
+                    continue
+
                 if not (1 <= len(text) <= 8):
+                    extra_skipped += 1
                     continue
-                syls = tuple(code.lower().replace("ü", "v").split())
+                syls = tuple(s.rstrip("12345") for s in norm_code.split() if s)
                 if not (1 <= len(syls) <= 8):
+                    extra_skipped += 1
                     continue
-                if not all(SYLLABLE_RE.match(s) and s not in INVALID_NON_MANDARIN_SYLLABLES for s in syls):
+                if valid_cn_syllables:
+                    is_valid_syls = all(s in valid_cn_syllables for s in syls)
+                else:
+                    is_valid_syls = all(SYLLABLE_RE.match(s) and s not in INVALID_NON_MANDARIN_SYLLABLES for s in syls)
+                if not is_valid_syls:
+                    extra_skipped += 1
                     continue
-                eff_w = weight if weight > 0.0 else 120.0
+                eff_w = weight if weight > 0.0 else 320.0
                 key = (text, syls)
                 if eff_w > cn_entries.get(key, 0.0):
                     cn_entries[key] = eff_w
+                protected_words.add(text)
                 for s in syls:
                     syllable_set.add(s)
-                extra_loaded += 1
-        print(f"    Merged {extra_loaded:,} custom entries from {len(args.extra_dict)} --extra-dict file(s).")
+                extra_cn_loaded += 1
+        print(
+            f"    Merged {extra_cn_loaded:,} Chinese + {extra_en_loaded:,} English/mixed custom entries "
+            f"from {len(args.extra_dict)} --extra-dict file(s) (skipped {extra_skipped:,} invalid lines)."
+        )
 
     # 1B-post. Apply `others/错字词.txt` orthographic transfer (`模版 -> 模板`, `记帐 -> 记账`, `转帐 -> 转账`,
     #          `手动档 -> 手动挡`, `优惠卷 -> 优惠券`, `按耐不住 -> 按捺不住`, `曾今 -> 曾经`, `魔蝎座 -> 摩羯座`):
@@ -1518,6 +1565,8 @@ def main(argv: list[str] | None = None) -> int:
                 en_map[key] = (disp, base_score)
 
     for k, val in CURATED_ENGLISH_BOOST.items():
+        en_map[k] = val
+    for k, val in extra_en_entries.items():
         en_map[k] = val
 
     print(f"    Loaded {len(en_map):,} English / CN-EN mixed entries.")
@@ -3011,7 +3060,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Optional embedded `LKEX` v1 neural extension container (`LNBR-v2`, `LNTR-v1`, `LNS6-v1`) inside the single `.lokeypack`
     # so iOS Files Picker (`asCopy: true`) and Share-Sheet/AirDrop (`Documents/Inbox/`) single-file imports carry
-    # 100% of Frost's neural extension weights zero-copy while remaining backward-compatible with `v0.9.4`!
+    # 100% of neural extension weights zero-copy while remaining backward-compatible with older clients.
     lkex_embedded_bytes = 0
     if os.environ.get("LOKEY_SKIP_LKEX") != "1":
         bwd_p = args.bwd_bin if args.bwd_bin is not None else (data_dir / "lokey_lnlm_bwd.bin")
@@ -3080,10 +3129,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         commit_sha = subprocess.check_output(
-            ["git", "-C", str(frost_dir), "rev-parse", "HEAD"], text=True
+            ["git", "-C", str(frost_dir), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         commit_date = subprocess.check_output(
-            ["git", "-C", str(frost_dir), "log", "-1", "--format=%cs"], text=True
+            ["git", "-C", str(frost_dir), "log", "-1", "--format=%cs"],
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
     except Exception:
         commit_sha = "unknown"
