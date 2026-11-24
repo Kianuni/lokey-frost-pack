@@ -1,6 +1,22 @@
-# lokey-frost-pack
-
-[中文说明](#中文说明) | [English](#english)
+<div align="center">
+  <br>
+  <h1>lokey-frost-pack</h1>
+  <p><strong>面向 <a href="https://kianuni.github.io/Lokey-Audit/">Lokey · 落键</a>（1:1 原生手感零学习成本 · 物理零联网 iOS 中文输入法）的 55.3 万词纯离线外部词库包与零依赖编译器</strong></p>
+  <p>只读 <code>mmap</code> 零内存拷贝热挂载（<code>44.32 MB</code> 单文件） · 支持本地 SHA-256 核验与 <code>--extra-dict</code> 定制个人 Rime 词表</p>
+  <p>
+    <a href="https://kianuni.github.io/Lokey-Audit/"><strong>🌐 Lokey 产品官网</strong></a> ·
+    <a href="https://github.com/Kianuni/lokey-frost-pack/releases/latest"><strong>📦 下载最新 .lokeypack</strong></a> ·
+    <a href="https://github.com/Kianuni/Lokey-Audit">🔒 零联网审计仓 (Lokey-Audit)</a> ·
+    <a href="#中文说明">简体中文</a> ·
+    <a href="#english">English</a>
+  </p>
+  <p>
+    <a href="https://github.com/Kianuni/lokey-frost-pack/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/Kianuni/lokey-frost-pack?style=flat-square&color=0EA5E9&label=Latest%20Pack"></a>
+    <a href="https://kianuni.github.io/Lokey-Audit/"><img alt="Lokey Showcase" src="https://img.shields.io/badge/Lokey-Native%20Feel%20%C2%B7%20Offline-1D232A?style=flat-square"></a>
+    <a href="https://github.com/Kianuni/Lokey-Audit"><img alt="Zero Network Audit" src="https://img.shields.io/badge/Client-Zero--Network%20Auditable-1E7E45?style=flat-square"></a>
+    <img alt="Word Count" src="https://img.shields.io/badge/Entries-553%2C352%20CN%20%7C%2044.32%20MB-6366F1?style=flat-square">
+  </p>
+</div>
 
 ---
 
@@ -8,7 +24,7 @@
 
 ## 中文说明
 
-`lokey-frost-pack` 是面向 **Lokey** iOS 26 键全拼与小鹤/自然码双拼输入法提供的**纯离线外部词库包与独立开源编译器仓库**。
+`lokey-frost-pack` 是面向 **[Lokey · 落键](https://kianuni.github.io/Lokey-Audit/)**（主打 1:1 iOS 26 原生手感、零学习适应成本且物理级零联网的 26 键全拼与小鹤/自然码双拼离线输入法）提供的**纯离线外部词库包与独立开源编译器仓库**。
 
 ### 1. 项目定位与上游关系
 
@@ -91,7 +107,9 @@ python3 scripts/build_lokeypack.py \
 
 ## English
 
-`lokey-frost-pack` is a standalone, offline `.lokeypack` external lexicon pack and open-source compiler repository for the **Lokey** iOS 26-key Full-Pinyin & Xiaohe/Ziranma Shuangpin keyboard.
+> 🌐 **Host Keyboard Showcase**: **[Lokey · Native iOS Feel, Physically Zero-Network](https://kianuni.github.io/Lokey-Audit/)** · Security Audit Repo: **[`Kianuni/Lokey-Audit`](https://github.com/Kianuni/Lokey-Audit)** · Latest Release: **[`rime-frost.lokeypack`](https://github.com/Kianuni/lokey-frost-pack/releases/latest)**
+
+`lokey-frost-pack` is a standalone, offline `.lokeypack` external lexicon pack and open-source compiler repository for **[Lokey](https://kianuni.github.io/Lokey-Audit/)**—an offline, physically zero-network Chinese iOS keyboard built around 1:1 native iOS ergonomics (zero learning curve) across 26-key Full Pinyin and Xiaohe/Ziranma Shuangpin.
 
 ### 1. Relationship with Upstream `rime-frost` & Mobile Enhancements
 
