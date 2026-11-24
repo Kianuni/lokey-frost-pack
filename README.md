@@ -1,7 +1,7 @@
 <div align="center">
   <br>
   <h1>lokey-frost-pack</h1>
-  <p><strong>面向 <a href="https://kianuni.github.io/Lokey-Audit/">Lokey · 落键</a>（1:1 原生手感零学习成本 · 物理零联网 iOS 中文输入法）的 55.3 万词纯离线外部词库包与零依赖编译器</strong></p>
+  <p><strong>面向 <a href="https://kianuni.github.io/Lokey-Audit/">Lokey</a>（1:1 原生手感零适应成本 · 纯离线物理零联网 iOS 26 键全拼与双拼中文输入法）的 55.3 万词白霜外部词库包与零依赖编译器</strong></p>
   <p>只读 <code>mmap</code> 零内存拷贝热挂载（<code>44.32 MB</code> 单文件） · 支持本地 SHA-256 核验与 <code>--extra-dict</code> 定制个人 Rime 词表</p>
   <p>
     <a href="https://kianuni.github.io/Lokey-Audit/"><strong>🌐 Lokey 产品官网</strong></a> ·
@@ -24,7 +24,7 @@
 
 ## 中文说明
 
-`lokey-frost-pack` 是面向 **[Lokey · 落键](https://kianuni.github.io/Lokey-Audit/)**（主打 1:1 iOS 26 原生手感、零学习适应成本且物理级零联网的 26 键全拼与小鹤/自然码双拼离线输入法）提供的**纯离线外部词库包与独立开源编译器仓库**。
+`lokey-frost-pack` 是面向 **[Lokey](https://kianuni.github.io/Lokey-Audit/)**——一款 **1:1 原生手感（零学习适应成本）、纯离线且物理级零联网的 iOS 26 键全拼与小鹤/自然码双拼中文输入法**——提供的**纯离线外部词库包与独立开源编译器仓库**。**Lokey** 主应用内置自研「**落墨 · Inkstone**」引擎（26 键盲打热区自适应校准、双向神经网络长句语义、句内中英混输、OpenCC 词级简繁与本地自造词记忆），源码与二进制均不含任何网络框架或数据采集。
 
 ### 1. 项目定位与上游关系
 
@@ -109,7 +109,7 @@ python3 scripts/build_lokeypack.py \
 
 > 🌐 **Host Keyboard Showcase**: **[Lokey · Native iOS Feel, Physically Zero-Network](https://kianuni.github.io/Lokey-Audit/)** · Security Audit Repo: **[`Kianuni/Lokey-Audit`](https://github.com/Kianuni/Lokey-Audit)** · Latest Release: **[`rime-frost.lokeypack`](https://github.com/Kianuni/lokey-frost-pack/releases/latest)**
 
-`lokey-frost-pack` is a standalone, offline `.lokeypack` external lexicon pack and open-source compiler repository for **[Lokey](https://kianuni.github.io/Lokey-Audit/)**—an offline, physically zero-network Chinese iOS keyboard built around 1:1 native iOS ergonomics (zero learning curve) across 26-key Full Pinyin and Xiaohe/Ziranma Shuangpin.
+`lokey-frost-pack` is a standalone, offline `.lokeypack` external lexicon pack and open-source compiler repository for **[Lokey](https://kianuni.github.io/Lokey-Audit/)**—a physically zero-network offline iOS 26-key Full Pinyin & Xiaohe/Ziranma Shuangpin Chinese keyboard featuring 1:1 native iOS ergonomics (zero learning curve) and the on-device **Inkstone** engine (adaptive 26-key heatmap calibration, bidirectional neural sentence semantics, inline CN-EN mixed decoding, word-level OpenCC conversion, and local user-phrase memory), with zero networking frameworks or telemetry in source or binary.
 
 ### 1. Relationship with Upstream `rime-frost` & Mobile Enhancements
 
